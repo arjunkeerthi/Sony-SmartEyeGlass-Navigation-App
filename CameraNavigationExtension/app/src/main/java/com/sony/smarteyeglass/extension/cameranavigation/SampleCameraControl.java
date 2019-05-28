@@ -64,7 +64,7 @@ public final class SampleCameraControl extends ControlExtension {
     /**
      * Uses SmartEyeglass API version
      */
-    private static final int SMARTEYEGLASS_API_VERSION = 3;
+    private static final int SMARTEYEGLASS_API_VERSION = 3; // Change to 4?
     public final int width;
     public final int height;
     /**
@@ -133,10 +133,18 @@ public final class SampleCameraControl extends ControlExtension {
         utils = new SmartEyeglassControlUtils(hostAppPackageName, listener);
         utils.setRequiredApiVersion(SMARTEYEGLASS_API_VERSION);
         utils.activate(context);
-
-        saveFolder = new File(Environment.getExternalStorageDirectory(), "CameraNavigationExtension");
+        // saves to /storage/emulated/0/CameraNavigationExtension
+        //saveFolder = new File(Environment.getExternalStorageDirectory(), "CameraNavigationExtension");
+        // saves to /data/data/com.sony.smarteyeglass.extension.cameranavigation (can't access manually from device, however)
+        //saveFolder = new File(context.getFilesDir(), "CameraNavigationExtension");
+        // TODO: Check what should be desired save location for camera images
+        // saves to /storage/emulated/0/Pictures/CameraNavigationExtension
+        saveFolder = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "CameraNavigationExtension");
         saveFolder.mkdir();
-
+        Log.d(Constants.LOG_TAG, Environment.getExternalStorageState());
+        Log.d(Constants.LOG_TAG, Environment.getExternalStorageDirectory().getAbsolutePath());
+        Log.d(Constants.LOG_TAG, context.getFilesDir().getAbsolutePath());
+        Log.d(Constants.LOG_TAG, saveFolder.getAbsolutePath());
         width = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_width);
         height = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_height);
     }
@@ -203,6 +211,7 @@ public final class SampleCameraControl extends ControlExtension {
     // and instruct user to begin camera operation
     @Override
     public void onResume() {
+        // TODO: Look into limiting on time for screen
         // Note: Setting the screen to be always on will drain the accessory
         // battery. It is done here solely for demonstration purposes.
         setScreenState(Control.Intents.SCREEN_STATE_ON);
@@ -278,7 +287,7 @@ public final class SampleCameraControl extends ControlExtension {
         }
         
         if(event.getIndex() != 0){
-            Log.d(Constants.LOG_TAG, "not oparate this event");
+            Log.d(Constants.LOG_TAG, "not operate this event");
             return;
         }
         
@@ -295,11 +304,11 @@ public final class SampleCameraControl extends ControlExtension {
             return;
         }
         
-        if (saveToSdcard == true) {
+        //if (saveToSdcard == true) { // TODO: Figure out what do with saveToSdcard variable
             String fileName = saveFilePrefix + String.format("%04d", saveFileIndex) + ".jpg";
             new SavePhotoTask(saveFolder,fileName).execute(data);
             saveFileIndex++;
-        }
+        //}
             
         if (recordingMode == SmartEyeglassControl.Intents.CAMERA_MODE_STILL) {
             Bitmap basebitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);

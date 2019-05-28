@@ -84,10 +84,8 @@ public final class SampleRegistrationInformation
 
     @Override
     public ContentValues getExtensionRegistrationConfiguration() {
-        String iconHostapp =
-                ExtensionUtils.getUriString(context, R.drawable.icon);
-        String iconExtension =
-                ExtensionUtils.getUriString(context, R.drawable.icon_extension);
+        String iconHostapp = ExtensionUtils.getUriString(context, R.drawable.icon);
+        String iconExtension = ExtensionUtils.getUriString(context, R.drawable.icon_extension);
 
         ContentValues values = new ContentValues();
         values.put(ExtensionColumns.CONFIGURATION_ACTIVITY,
