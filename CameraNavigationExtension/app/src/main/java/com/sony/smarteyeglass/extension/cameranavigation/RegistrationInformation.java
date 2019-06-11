@@ -36,13 +36,12 @@ import android.content.Context;
 
 import com.sonyericsson.extras.liveware.aef.registration.Registration.ExtensionColumns;
 import com.sonyericsson.extras.liveware.extension.util.ExtensionUtils;
-import com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation;
 
 /**
  * Provides information needed during extension registration
  */
-public final class SampleRegistrationInformation
-        extends RegistrationInformation {
+public final class RegistrationInformation
+        extends com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation {
 
     /** The application context. */
     private final Context context;
@@ -56,7 +55,7 @@ public final class SampleRegistrationInformation
      * @param context
      *            The context.
      */
-    protected SampleRegistrationInformation(final Context context) {
+    protected RegistrationInformation(final Context context) {
         this.context = context;
     }
 
@@ -68,18 +67,18 @@ public final class SampleRegistrationInformation
     @Override
     public int getRequiredSensorApiVersion() {
 
-        return RegistrationInformation.API_NOT_REQUIRED;
+        return com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation.API_NOT_REQUIRED;
     }
 
     @Override
     public int getRequiredNotificationApiVersion() {
 
-        return RegistrationInformation.API_NOT_REQUIRED;
+        return com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation.API_NOT_REQUIRED;
     }
 
     @Override
     public int getRequiredWidgetApiVersion() {
-        return RegistrationInformation.API_NOT_REQUIRED;
+        return com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation.API_NOT_REQUIRED;
     }
 
     @Override
@@ -89,7 +88,7 @@ public final class SampleRegistrationInformation
 
         ContentValues values = new ContentValues();
         values.put(ExtensionColumns.CONFIGURATION_ACTIVITY,
-                SampleCameraPreferenceActivity.class.getName());
+                AppPreferenceActivity.class.getName());
         values.put(ExtensionColumns.CONFIGURATION_TEXT,
                 context.getString(R.string.configuration_text));
         values.put(ExtensionColumns.NAME,

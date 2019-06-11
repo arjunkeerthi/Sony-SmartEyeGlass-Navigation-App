@@ -45,7 +45,7 @@ import android.util.Log;
  * The Sample Camera Preference activity handles the preferences for
  * the Sample Camera Extension.
  */
-public final class SampleCameraPreferenceActivity extends PreferenceActivity {
+public final class AppPreferenceActivity extends PreferenceActivity {
 
     /** The ID for the Read Me dialog. */
     private static final int DIALOG_READ_ME = 1;

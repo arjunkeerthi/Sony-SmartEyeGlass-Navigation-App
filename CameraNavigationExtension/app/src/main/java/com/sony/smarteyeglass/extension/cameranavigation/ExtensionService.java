@@ -33,19 +33,17 @@ package com.sony.smarteyeglass.extension.cameranavigation;
 
 import android.util.Log;
 
-import com.sonyericsson.extras.liveware.extension.util.ExtensionService;
 import com.sonyericsson.extras.liveware.extension.util.control.ControlExtension;
 import com.sonyericsson.extras.liveware.extension.util.registration.DeviceInfoHelper;
-import com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation;
 
 /**
  * The Sample Extension Service handles registration and keeps track of all
  * accessories.
  */
-public final class SampleExtensionService extends ExtensionService {
+public final class ExtensionService extends com.sonyericsson.extras.liveware.extension.util.ExtensionService {
 
     /** Creates a new instance. */
-    public SampleExtensionService() {
+    public ExtensionService() {
         super(Constants.EXTENSION_KEY);
     }
 
@@ -56,8 +54,8 @@ public final class SampleExtensionService extends ExtensionService {
     }
 
     @Override
-    protected RegistrationInformation getRegistrationInformation() {
-        return new SampleRegistrationInformation(this);
+    protected com.sonyericsson.extras.liveware.extension.util.registration.RegistrationInformation getRegistrationInformation() {
+        return new RegistrationInformation(this);
     }
 
     @Override
@@ -71,7 +69,7 @@ public final class SampleExtensionService extends ExtensionService {
         boolean isApiSupported = DeviceInfoHelper
             .isSmartEyeglassScreenSupported(this, hostAppPackageName);
         if (isApiSupported) {
-            return new SampleCameraControl(this, hostAppPackageName);
+            return new ImageManager(this, hostAppPackageName);
         } else {
             Log.d(Constants.LOG_TAG, "Service: not supported, exiting");
             throw new IllegalArgumentException(

@@ -40,11 +40,18 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.preference.PreferenceManager;
 import android.text.format.Time;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import java.io.File;
+import java.io.IOException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 import com.sony.smarteyeglass.SmartEyeglassControl;
 import com.sony.smarteyeglass.extension.util.CameraEvent;
 import com.sony.smarteyeglass.extension.util.ControlCameraException;
@@ -59,12 +66,13 @@ import com.sonyericsson.extras.liveware.extension.util.control.ControlTouchEvent
  * Demonstrates how to listen to camera events, process
  * camera data, display pictures, and store image data to external storage.
  */
-public final class SampleCameraControl extends ControlExtension {
+public final class ImageManager extends ControlExtension {
 
     /**
      * Uses SmartEyeglass API version
      */
     private static final int SMARTEYEGLASS_API_VERSION = 3; // Change to 4?
+    private static int NUMBER_OF_CORES = Runtime.getRuntime().availableProcessors();
     public final int width;
     public final int height;
     /**
@@ -85,13 +93,16 @@ public final class SampleCameraControl extends ControlExtension {
     private int pointY;
     private int pointBaseX;
 
+    private Handler mHandler;
+    private Executor mExecutor;
+
     /**
      * Creates an instance of this control class.
      *
      * @param context            The context.
      * @param hostAppPackageName Package name of host application.
      */
-    public SampleCameraControl(final Context context, final String hostAppPackageName) {
+    public ImageManager(final Context context, final String hostAppPackageName) {
         super(context, hostAppPackageName);
         this.context = context;
         // Initialize listener for camera events
@@ -147,6 +158,16 @@ public final class SampleCameraControl extends ControlExtension {
         Log.d(Constants.LOG_TAG, saveFolder.getAbsolutePath());
         width = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_width);
         height = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_height);
+
+        // Handles messages that contain results from object detection in ProcessImageRunnable
+        mHandler = new Handler(Looper.getMainLooper()) {
+            @Override
+            public void handleMessage(Message msg) {
+                // TODO: Update Eyeglass display with recognition results
+                Log.d(Constants.LOG_TAG, "Message received! => msg.what = " + msg.what + "\nmsg.obj = " + msg.obj.toString());
+            }
+        };
+        mExecutor = Executors.newFixedThreadPool(NUMBER_OF_CORES);
     }
 
     /**
@@ -307,6 +328,15 @@ public final class SampleCameraControl extends ControlExtension {
         //if (saveToSdcard == true) { // TODO: Figure out what do with saveToSdcard variable
             String fileName = saveFilePrefix + String.format("%04d", saveFileIndex) + ".jpg";
             new SavePhotoTask(saveFolder,fileName).execute(data);
+
+            // Use Executor to execute task (Runnable) that runs Tensorflow's object detection API on image from SmartEyeGlass camera
+            try {
+                mExecutor.execute(new ProcessImageRunnable(context.getAssets(), mHandler, data));
+            } catch(IOException e) {
+                Log.d(Constants.LOG_TAG, "cameraEventOperation(): executing ProcessImageRunnable failed.");
+                return;
+            }
+
             saveFileIndex++;
         //}
             

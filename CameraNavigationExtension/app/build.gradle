@@ -16,6 +16,10 @@ android {
         }
     }
 
+    aaptOptions {
+        noCompress "tflite"
+    }
+
     applicationVariants.all { variant ->
         if (variant.buildType.name.equals("release")) {
             variant.outputs.each { output ->
@@ -31,4 +35,5 @@ dependencies {
     implementation project(':SmartEyeglassAPI')
     implementation project(':SmartExtensionAPI')
     implementation project(':SmartExtensionUtils')
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
 }
