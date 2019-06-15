@@ -29,6 +29,7 @@ Copyright (c) 2014, Sony Corporation
  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 package com.sony.smarteyeglass.extension.cameranavigation;
 
 import android.content.Context;
@@ -38,21 +39,21 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Rect;
-import android.os.Environment;
+import android.graphics.Point;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
-import android.text.format.Time;
 import android.util.DisplayMetrics;
 import android.util.Log;
-import java.io.File;
+import android.widget.ImageView;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-
 import com.sony.smarteyeglass.SmartEyeglassControl;
+import com.sony.smarteyeglass.extension.cameranavigation.tflite.Classifier;
+import com.sony.smarteyeglass.extension.cameranavigation.tflite.MultiBoxTracker;
+import com.sony.smarteyeglass.extension.cameranavigation.tflite.TFLiteObjectDetectionAPIModel;
 import com.sony.smarteyeglass.extension.util.CameraEvent;
 import com.sony.smarteyeglass.extension.util.ControlCameraException;
 import com.sony.smarteyeglass.extension.util.SmartEyeglassControlUtils;
@@ -72,29 +73,29 @@ public final class ImageManager extends ControlExtension {
      * Uses SmartEyeglass API version
      */
     private static final int SMARTEYEGLASS_API_VERSION = 3; // Change to 4?
-    private static int NUMBER_OF_CORES = Runtime.getRuntime().availableProcessors();
-    public final int width;
-    public final int height;
-    /**
-     * The application context.
-     */
+    private static final String MODEL_FILE = "detect.tflite";
+    private static final String LABELS_FILE = "file:///android_asset/labelmap.txt";
+    public static final int INPUT_SIZE = 300;
+    private static final boolean QUANTIZED = true;
+    private final Point DISPLAY_SIZE = new Point();
+
+    private final int width;
+    private final int height;
     private final Context context;
-    /**
-     * Instance of the Control Utility class.
-     */
     private final SmartEyeglassControlUtils utils;
-    private boolean saveToSdcard = false;
     private boolean cameraStarted = false;
-    private int saveFileIndex;
-    private int recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_STILL;
-    private String saveFilePrefix;
-    private File saveFolder;
     private int pointX;
     private int pointY;
     private int pointBaseX;
 
-    private Handler mHandler;
+    private Classifier mClassifier;
     private Executor mExecutor;
+    private MultiBoxTracker mTracker;
+    public static Handler mHandler;
+    private ImageView mImageView;
+    private boolean imageViewReceived = false;
+    private boolean readyForNextImage = true;
+    private int imageCounter;
 
     /**
      * Creates an instance of this control class.
@@ -111,18 +112,7 @@ public final class ImageManager extends ControlExtension {
             // handle result according to current recording mode
             @Override
             public void onCameraReceived(final CameraEvent event) {
-                switch (recordingMode) {
-                    case SmartEyeglassControl.Intents.CAMERA_MODE_STILL:
-                        Log.d(Constants.LOG_TAG, "Camera Event coming: " + event.toString());
-                        break;
-                    case SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_HIGH_RATE:
-                        Log.d(Constants.LOG_TAG, "Stream Event coming: " + event.toString());
-                    case SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_LOW_RATE:
-                        Log.d(Constants.LOG_TAG, "Stream Event coming: " + event.toString());
-                        break;
-                    default:
-                        break;
-                }
+                Log.d(Constants.LOG_TAG, "Stream Event coming: " + event.toString());
                 cameraEventOperation(event);
             }
 
@@ -141,33 +131,48 @@ public final class ImageManager extends ControlExtension {
                 updateDisplay();
             }
         };
+
         utils = new SmartEyeglassControlUtils(hostAppPackageName, listener);
         utils.setRequiredApiVersion(SMARTEYEGLASS_API_VERSION);
         utils.activate(context);
-        // saves to /storage/emulated/0/CameraNavigationExtension
-        //saveFolder = new File(Environment.getExternalStorageDirectory(), "CameraNavigationExtension");
-        // saves to /data/data/com.sony.smarteyeglass.extension.cameranavigation (can't access manually from device, however)
-        //saveFolder = new File(context.getFilesDir(), "CameraNavigationExtension");
-        // TODO: Check what should be desired save location for camera images
-        // saves to /storage/emulated/0/Pictures/CameraNavigationExtension
-        saveFolder = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "CameraNavigationExtension");
-        saveFolder.mkdir();
-        Log.d(Constants.LOG_TAG, Environment.getExternalStorageState());
-        Log.d(Constants.LOG_TAG, Environment.getExternalStorageDirectory().getAbsolutePath());
-        Log.d(Constants.LOG_TAG, context.getFilesDir().getAbsolutePath());
-        Log.d(Constants.LOG_TAG, saveFolder.getAbsolutePath());
         width = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_width);
         height = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_height);
+
+        try {
+            mClassifier = TFLiteObjectDetectionAPIModel.create(this.context.getAssets(), MODEL_FILE, LABELS_FILE, INPUT_SIZE, QUANTIZED);
+        } catch(IOException e) {
+            Log.e(Constants.IMAGE_MANAGER_TAG, "Unable to create Classifier. Error: \n" + e.toString());
+        }
+
+        mExecutor = Executors.newSingleThreadExecutor();
+        mTracker = new MultiBoxTracker(this.context);
 
         // Handles messages that contain results from object detection in ProcessImageRunnable
         mHandler = new Handler(Looper.getMainLooper()) {
             @Override
             public void handleMessage(Message msg) {
                 // TODO: Update Eyeglass display with recognition results
-                Log.d(Constants.LOG_TAG, "Message received! => msg.what = " + msg.what + "\nmsg.obj = " + msg.obj.toString());
+                switch(msg.what) {
+                    case Constants.IMAGE_PROCESSING_FAILED:
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Image processing failed or results not available");
+                        break;
+                    case Constants.IMAGE_PROCESSING_COMPLETED:
+                        Log.d(Constants.IMAGE_MANAGER_TAG, "Message received! => msg.what = " + msg.what + "\nmsg.obj = " + msg.obj.toString());
+                        break;
+                    case Constants.ACTIVITY_REFERENCE_READY:
+                        mImageView = ((ImageResultActivity)msg.obj).findViewById(R.id.overlay);
+                        DISPLAY_SIZE.x = mImageView.getWidth();
+                        DISPLAY_SIZE.y = mImageView.getHeight();
+                        mTracker.setFrameConfiguration(INPUT_SIZE, INPUT_SIZE, 0);
+                        imageViewReceived = true;
+                        Log.d(Constants.IMAGE_MANAGER_TAG, "Received activity, extracted imageView");
+                        break;
+                    default:
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Message status not recognized, ignoring message");
+                        break;
+                }
             }
         };
-        mExecutor = Executors.newFixedThreadPool(NUMBER_OF_CORES);
     }
 
     /**
@@ -176,22 +181,12 @@ public final class ImageManager extends ControlExtension {
     @Override
     public void onTouch(final ControlTouchEvent event) {
         if (event.getAction() == Control.TapActions.SINGLE_TAP) {
-            if (recordingMode == SmartEyeglassControl.Intents.CAMERA_MODE_STILL ||
-                    recordingMode == SmartEyeglassControl.Intents.CAMERA_MODE_STILL_TO_FILE) {
-                if (!cameraStarted) {
-                    initializeCamera();
-                }
-                Log.d(Constants.LOG_TAG, "Select button pressed -> cameraCapture()");
-                // Call for camera capture for Still recording modes.
-                utils.requestCameraCapture();
+            if (!cameraStarted) {
+                initializeCamera();
             } else {
-                if (!cameraStarted) {
-                    initializeCamera();
-                } else {
-                    cleanupCamera();
-                }
-                updateDisplay();
+                cleanupCamera();
             }
+            updateDisplay();
         }
     }
 
@@ -200,18 +195,8 @@ public final class ImageManager extends ControlExtension {
      */
     private void initializeCamera() {
         try {
-            Time now = new Time();
-            now.setToNow();
-            // Start camera with filepath if recording mode is Still to file
-            if (recordingMode == SmartEyeglassControl.Intents.CAMERA_MODE_STILL_TO_FILE) {
-                String filePath = saveFolder + "/" + saveFilePrefix + String.format("%04d", saveFileIndex) + ".jpg";
-                saveFileIndex++;
-                utils.startCamera(filePath);
-            } else {
-            // Start camera without filepath for other recording modes
-                Log.d(Constants.LOG_TAG, "startCamera ");
-                utils.startCamera();
-            }
+            Log.d(Constants.LOG_TAG, "startCamera ");
+            utils.startCamera();
         } catch (ControlCameraException e) {
             Log.d(Constants.LOG_TAG, "Failed to register listener", e);
         }
@@ -239,33 +224,15 @@ public final class ImageManager extends ControlExtension {
         pointX = context.getResources().getInteger(R.integer.POINT_X);
         pointY = context.getResources().getInteger(R.integer.POINT_Y);
 
-        Time now = new Time();
-        now.setToNow();
-        saveFilePrefix = "cameranavigation_" + now.format2445() + "_";
-        saveFileIndex = 0;
+        imageCounter = 0;
 
         // Read the settings for the extension.
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        saveToSdcard = prefs.getBoolean(context.getString(R.string.preference_key_save_to_sdcard), true);
-        int recMode = Integer.parseInt(prefs.getString(context.getString(R.string.preference_key_recordmode), "2"));
-        int preferenceId = R.string.preference_key_resolution_still;
 
-        switch (recMode) {
-            case 0: // recording mode is still
-                recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_STILL;
-                break;
-            case 1: // recording mode is still to file
-                recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_STILL_TO_FILE;
-                break;
-            case 2: // recording mode is JPGStream Low
-                recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_LOW_RATE;
-                preferenceId = R.string.preference_key_resolution_movie;
-                break;
-            case 3: // recording mode is JPGStream High
-                recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_HIGH_RATE;
-                preferenceId = R.string.preference_key_resolution_movie;
-                break;
-        }
+        // TODO: Look into performance with high stream rate and deciding when to switch (i.e. server available)
+        // CAMERA_MODE_JPG_STREAM_LOW_RATE is 7.5fps, CAMERA_MODE_JPG_STREAM_HIGH_RATE is 15fps
+        int recordingMode = SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_LOW_RATE;
+        int preferenceId = R.string.preference_key_resolution_movie;
 
         // Get and show quality parameters
         int jpegQuality = Integer.parseInt(prefs.getString(
@@ -318,42 +285,34 @@ public final class ImageManager extends ControlExtension {
         if ((event.getData() != null) && ((event.getData().length) > 0)) {
             data = event.getData();
             bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+        } else {
+            Log.e(Constants.IMAGE_MANAGER_TAG, "Data was null or already invalid");
         }
             
         if (bitmap == null) {
-            Log.d(Constants.LOG_TAG, "bitmap == null");
+            Log.e(Constants.LOG_TAG, "bitmap == null");
             return;
         }
-        
-        //if (saveToSdcard == true) { // TODO: Figure out what do with saveToSdcard variable
-            String fileName = saveFilePrefix + String.format("%04d", saveFileIndex) + ".jpg";
-            new SavePhotoTask(saveFolder,fileName).execute(data);
 
-            // Use Executor to execute task (Runnable) that runs Tensorflow's object detection API on image from SmartEyeGlass camera
-            try {
-                mExecutor.execute(new ProcessImageRunnable(context.getAssets(), mHandler, data));
-            } catch(IOException e) {
-                Log.d(Constants.LOG_TAG, "cameraEventOperation(): executing ProcessImageRunnable failed.");
-                return;
+        if (!imageViewReceived) {
+            ImageResultActivity.mHandler.obtainMessage(Constants.REQUEST_FOR_ACTIVITY_REFERENCE).sendToTarget();
+        }
+
+        imageCounter++;
+
+        if(readyForNextImage) {
+            if(!imageViewReceived) {
+                // Need to release UI thread so it can receive message from ImageResultActivity and set imageViewReceived flag to true
+                return; // Though we really should never enter this if-statement
             }
-
-            saveFileIndex++;
-        //}
-            
-        if (recordingMode == SmartEyeglassControl.Intents.CAMERA_MODE_STILL) {
-            Bitmap basebitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            basebitmap.setDensity(DisplayMetrics.DENSITY_DEFAULT);
-            Canvas canvas = new Canvas(basebitmap);
-            Rect rect = new Rect(0, 0, width, height);
-            Paint paint = new Paint();
-            paint.setStyle(Paint.Style.FILL);
-            canvas.drawBitmap(bitmap, rect, rect, paint);
-            
-            utils.showBitmap(basebitmap);
-            return;
+            // Use Executor to execute task (Runnable) that runs Tensorflow's object detection API on image from SmartEyeGlass camera
+            mExecutor.execute(new ProcessImageRunnable(mClassifier, mTracker, mHandler, imageCounter, DISPLAY_SIZE, data));
+            readyForNextImage = false;
         }
+
+        ImageResultActivity.mHandler.obtainMessage(Constants.STREAMED_IMAGE_READY, Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(data, 0, data.length), INPUT_SIZE, INPUT_SIZE, true)).sendToTarget();
             
-        Log.d(Constants.LOG_TAG, "Camera frame was received : #" + saveFileIndex);
+        Log.d(Constants.IMAGE_MANAGER_TAG, "Camera frame was received : #" + imageCounter);
         updateDisplay();
     }
     
@@ -366,26 +325,14 @@ public final class ImageManager extends ControlExtension {
         paint.setStyle(Paint.Style.FILL);
         paint.setTextSize(16);
         paint.setColor(Color.WHITE);
+
         // Update layout according to the camera mode
-        switch (recordingMode) {
-            case SmartEyeglassControl.Intents.CAMERA_MODE_STILL:
-                canvas.drawText("Tap to capture : STILL", pointX, pointY, paint);
-                break;
-            case SmartEyeglassControl.Intents.CAMERA_MODE_STILL_TO_FILE:
-                canvas.drawText("Tap to capture : STILL TO FILE", pointX, pointY, paint);
-                break;
-            case SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_HIGH_RATE:
-            case SmartEyeglassControl.Intents.CAMERA_MODE_JPG_STREAM_LOW_RATE:
-                if (cameraStarted) {
-                    canvas.drawText("JPEG Streaming...", pointBaseX, pointY, paint);
-                    canvas.drawText("Tap to stop.", pointBaseX, (pointY * 2), paint);
-                    canvas.drawText("Frame Number: " + Integer.toString(saveFileIndex), pointBaseX, (pointY * 3), paint);
-                } else {
-                    canvas.drawText("Tap to start JPEG Stream.", pointBaseX, pointY, paint);
-                }
-                break;
-            default:
-                canvas.drawText("wrong recording type.", pointBaseX, pointY, paint);
+        if (cameraStarted) {
+            canvas.drawText("JPEG Streaming...", pointBaseX, pointY, paint);
+            canvas.drawText("Tap to stop.", pointBaseX, (pointY * 2), paint);
+            canvas.drawText("Frame Number: " + Integer.toString(imageCounter), pointBaseX, (pointY * 3), paint);
+        } else {
+            canvas.drawText("Tap to start JPEG Stream.", pointBaseX, pointY, paint);
         }
 
         utils.showBitmap(displayBitmap);

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file was taken from the Tensorflow Lite example object detection Android app available in Tensorflow's
+// Github repository: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
+
 package com.sony.smarteyeglass.extension.cameranavigation.tflite;
 
 import android.util.Log;

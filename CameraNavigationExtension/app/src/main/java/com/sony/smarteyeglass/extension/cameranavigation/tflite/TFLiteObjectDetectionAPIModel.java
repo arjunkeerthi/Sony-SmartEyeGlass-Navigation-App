@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file was taken from the Tensorflow Lite example object detection Android app available in Tensorflow's
+// Github repository: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
+
 package com.sony.smarteyeglass.extension.cameranavigation.tflite;
 
 import android.content.res.AssetFileDescriptor;
@@ -34,7 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
-import com.sony.smarteyeglass.extension.cameranavigation.tflite.Logger;
+/* import com.sony.smarteyeglass.extension.cameranavigation.tflite.Logger; */ // I moved TF files into one directory, so no need to import
 import org.tensorflow.lite.Interpreter;
 
 /**
@@ -145,6 +148,17 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     return d;
   }
 
+  // I originally was going to use a thread pool with the number of threads corresponding to the number
+  // of cores in the device. I later realized this wouldn't work since the images needed to be processed
+  // serially (no point telling the user there WAS an object a couple frames ago). But before this,
+  // I had a TON of trouble getting past a BufferOverflowException. I finally narrowed it down to this
+  // method; making this method synchronized fixed this issue. But, when using one classifier for all
+  // detections, running multiple threads for detection purposes doesn't make sense since only one thread
+  // can actually "detect" (i.e. run recognizeImage()) at a time, which led to me using a single thread
+  // for the Executor. It might be a good idea to try initializing multiple classifiers initially, each
+  // with their own thread tasked with that classifier's detections. But again, not a suitable choice for
+  // our purposes.
+  // Also, this 2-space tab format sucks.
   @Override
   public List<Recognition> recognizeImage(final Bitmap bitmap) {
     // Log this method so that it can be analyzed with systrace.
@@ -154,7 +168,6 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     // Preprocess the image data from 0-255 int to normalized float based
     // on the provided parameters.
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-
     imgData.rewind();
     for (int i = 0; i < inputSize; ++i) {
       for (int j = 0; j < inputSize; ++j) {
@@ -171,6 +184,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
         }
       }
     }
+
     Trace.endSection(); // preprocessBitmap
 
     // Copy the input data into TensorFlow.

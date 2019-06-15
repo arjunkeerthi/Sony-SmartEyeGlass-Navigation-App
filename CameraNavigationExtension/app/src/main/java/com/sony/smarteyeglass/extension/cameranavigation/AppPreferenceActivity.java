@@ -29,12 +29,18 @@ Copyright (c) 2014, Sony Corporation
  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+// Added an exit link so we could switch from the Preferences page to the View displaying the streamed
+// camera images and the bounding boxes for detected object (for debugging/testing purposes, won't be
+// in an actual final product).
+
 package com.sony.smarteyeglass.extension.cameranavigation;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
+import android.content.Intent;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.Preference.OnPreferenceClickListener;
@@ -68,6 +74,18 @@ public final class AppPreferenceActivity extends PreferenceActivity {
                 return true;
             }
         });
+
+        Preference exit_button = (Preference) getPreferenceManager().findPreference("exit_link");
+        if(exit_button != null) {
+            exit_button.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+                @Override
+                public boolean onPreferenceClick(Preference p) {
+                    Intent intent = new Intent(AppPreferenceActivity.this, ImageResultActivity.class);
+                    startActivity(intent);
+                    return true;
+                }
+            });
+        }
 
     }
 

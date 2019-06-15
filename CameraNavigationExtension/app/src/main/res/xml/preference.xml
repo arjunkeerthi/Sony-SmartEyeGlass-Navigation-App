@@ -39,5 +39,8 @@
         android:key="@string/preference_key_jpeg_quality"
         android:summary="Choose the camera JPEG quality"
         android:title="Camera JPEG quality" />
+    <PreferenceCategory android:title="Settings">
+        <Preference android:title="Click to exit" android:key="exit_link"/>
+    </PreferenceCategory>
 
 </PreferenceScreen>

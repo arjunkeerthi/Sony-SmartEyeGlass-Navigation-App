@@ -36,12 +36,22 @@ package com.sony.smarteyeglass.extension.cameranavigation;
  */
 public final class Constants {
 
-    /** The extension key. */
-    public static final String EXTENSION_KEY =
-            Constants.class.getPackage().getName() + ".key";
+    // Extension key
+    public static final String EXTENSION_KEY = Constants.class.getPackage().getName() + ".key";
 
-    /** The log tag. */
+    // Log tags
     public static final String LOG_TAG = "CameraNavigationExtension";
+    public static final String IMAGE_MANAGER_TAG = "ImageManager";
+    public static final String IMAGE_RESULT_ACTIVITY_TAG = "ImageResultActivity";
+    public static final String PROCESS_IMAGE_RUNNABLE_TAG = "ProcessImageRunnable";
+
+    // Message status tags for use by handlers
+    public static final int IMAGE_PROCESSING_FAILED = 0;
+    public static final int IMAGE_PROCESSING_COMPLETED = 1;
+    public static final int STREAMED_IMAGE_READY = 2;
+    public static final int BOUNDING_BOXES_READY = 3;
+    public static final int REQUEST_FOR_ACTIVITY_REFERENCE = 4;
+    public static final int ACTIVITY_REFERENCE_READY = 5;
 
     /** Hides the default constructor. */
     private Constants() {
