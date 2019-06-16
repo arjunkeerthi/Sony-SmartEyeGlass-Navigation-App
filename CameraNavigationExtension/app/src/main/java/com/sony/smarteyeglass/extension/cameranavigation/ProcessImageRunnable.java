@@ -13,28 +13,40 @@ import java.util.List;
 
 public class ProcessImageRunnable implements Runnable {
 
+    // We only keep detections with a confidence of at least 0.45 (further testing of this value could be helpful)
     private final float MINIMUM_CONFIDENCE_LEVEL = 0.45f;
 
+    // Reference to ImageManager handler so we can send new detections
     private Handler mHandler;
+
+    // Responsible for running object detection
     private Classifier mClassifier;
+
+    // Responsible for drawing bounding boxes
     private MultiBoxTracker mTracker;
+
+    // Byte array for image
     private byte[] mData;
+
+    // This image's count out of all streamed images thus far
     private int mImageCounter;
+
+    // Dimensions of ImageView in which streamed images are displayed and on which bounding boxes are drawn
     private Point mDisplaySize;
 
-    public ProcessImageRunnable(Classifier classifier, MultiBoxTracker tracker, Handler handler, int imageCounter, Point displaySize, byte[] data) {
+    public ProcessImageRunnable(Classifier classifier, MultiBoxTracker tracker, Handler handler, Point displaySize, byte[] data, int imageCounter) {
+        this.mClassifier = classifier;
+        this.mTracker = tracker;
         this.mHandler = handler;
+        this.mDisplaySize = displaySize;
         this.mData = data;
         this.mImageCounter = imageCounter;
-        this.mDisplaySize = displaySize;
-        mClassifier = classifier;
-        mClassifier.setNumThreads(Runtime.getRuntime().availableProcessors());
-        this.mTracker = tracker;
     }
 
     public void run() {
         try {
-            // Check performance when setting bilinear filtering to false
+            // TODO: Check performance when setting bilinear filtering to false
+            // Convert image in byte array form to bitmap
             Bitmap bitmap = Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(mData, 0, mData.length), ImageManager.INPUT_SIZE, ImageManager.INPUT_SIZE, true);
 
             // Run object detection on image, recording time taken for processing
@@ -44,7 +56,7 @@ public class ProcessImageRunnable implements Runnable {
             Log.d(Constants.PROCESS_IMAGE_RUNNABLE_TAG, "Detection on frame #" + mImageCounter);
             Log.d(Constants.PROCESS_IMAGE_RUNNABLE_TAG, "Object detection time: " + (endTime - startTime) / 1000000 + "ms");
 
-            // Removing detections with confidence < 0.45, recording final total time for processing
+            // Removing detections with confidence less than MINIMUM_CONFIDENCE_LEVEL, recording final total time for processing
             Iterator<Classifier.Recognition> iterator = mRecognitions.iterator();
             while(iterator.hasNext()) {
                 if (iterator.next().getConfidence() < MINIMUM_CONFIDENCE_LEVEL) {
@@ -57,7 +69,8 @@ public class ProcessImageRunnable implements Runnable {
             // Send detections back to ImageManager in UI thread to be interpreted and used to inform user of obstacles ahead
             mHandler.obtainMessage(Constants.IMAGE_PROCESSING_COMPLETED, mRecognitions).sendToTarget();
 
-            // Creates new bitmap and draws bounding boxes
+            // Creates new bitmap and draws bounding boxes (note: bitmap has dimensions of ImageView that bounding boxes will
+            // be displayed on. mTracker takes care of scaling from detections in 300x300 frame to display frame
             bitmap = Bitmap.createBitmap(mDisplaySize.x, mDisplaySize.y, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bitmap);
             mTracker.processResults(mRecognitions);
@@ -65,7 +78,7 @@ public class ProcessImageRunnable implements Runnable {
 
             // Send bitmap with bounding boxes in correct locations to ImageResultActivity to be displayed over streamed images
             ImageResultActivity.mHandler.obtainMessage(Constants.BOUNDING_BOXES_READY, bitmap).sendToTarget();
-        } catch(Exception e) { // TODO: Improve try-catch block so it better isolates potential exception-throwing points
+        } catch(Exception e) {
             Log.e(Constants.PROCESS_IMAGE_RUNNABLE_TAG, "run(): " + e.toString());
             mHandler.obtainMessage(Constants.IMAGE_PROCESSING_FAILED).sendToTarget();
         }

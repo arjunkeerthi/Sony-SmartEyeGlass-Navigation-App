@@ -50,8 +50,8 @@ public final class Constants {
     public static final int IMAGE_PROCESSING_COMPLETED = 1;
     public static final int STREAMED_IMAGE_READY = 2;
     public static final int BOUNDING_BOXES_READY = 3;
-    public static final int REQUEST_FOR_ACTIVITY_REFERENCE = 4;
-    public static final int ACTIVITY_REFERENCE_READY = 5;
+    public static final int REQUEST_FOR_IMAGE_VIEW_REFERENCE = 4;
+    public static final int IMAGE_VIEW_REFERENCE_READY = 5;
 
     /** Hides the default constructor. */
     private Constants() {

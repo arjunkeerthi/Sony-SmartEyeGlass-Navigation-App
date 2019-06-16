@@ -11,6 +11,8 @@ import android.widget.ImageView;
 
 public class ImageResultActivity extends AppCompatActivity {
 
+    // Handler to receive messages from ImageManager and ProcessImageRunnable (static so can be accessed
+    // without having to wait for messages and references to be sent)
     public static Handler mHandler;
 
     @Override
@@ -22,7 +24,8 @@ public class ImageResultActivity extends AppCompatActivity {
         final ImageView overlay = (ImageView) findViewById(R.id.overlay);
 
         mHandler = new Handler(Looper.getMainLooper()) {
-            // Receive camera images from SmartEyeGlass
+            // Receive camera images from ImageManager, bounding boxes from ProcessImageRunnable, and
+            // request for activity reference from ImageManger
             @Override
             public void handleMessage(Message msg) {
                 switch(msg.what) {
@@ -34,8 +37,8 @@ public class ImageResultActivity extends AppCompatActivity {
                         overlay.setImageBitmap((Bitmap)msg.obj);
                         Log.d(Constants.IMAGE_RESULT_ACTIVITY_TAG, "Drew bounding boxes in overlay");
                         break;
-                    case Constants.REQUEST_FOR_ACTIVITY_REFERENCE:
-                        ImageManager.mHandler.obtainMessage(msg.what, ImageResultActivity.this).sendToTarget();
+                    case Constants.REQUEST_FOR_IMAGE_VIEW_REFERENCE:
+                        ((Handler)msg.obj).obtainMessage(Constants.IMAGE_VIEW_REFERENCE_READY, overlay).sendToTarget();
                         Log.d(Constants.IMAGE_RESULT_ACTIVITY_TAG, "Reference to ImageResultActivity passed to ImageManager");
                         break;
                     default:

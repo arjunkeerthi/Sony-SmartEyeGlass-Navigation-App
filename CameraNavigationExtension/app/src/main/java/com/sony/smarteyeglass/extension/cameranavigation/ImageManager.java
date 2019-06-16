@@ -69,32 +69,55 @@ import com.sonyericsson.extras.liveware.extension.util.control.ControlTouchEvent
  */
 public final class ImageManager extends ControlExtension {
 
-    /**
-     * Uses SmartEyeglass API version
-     */
+    // Uses SmartEyeglass API version
     private static final int SMARTEYEGLASS_API_VERSION = 3; // Change to 4?
-    private static final String MODEL_FILE = "detect.tflite";
-    private static final String LABELS_FILE = "file:///android_asset/labelmap.txt";
+
+    // Application context
+    private final Context context;
+
+    // Parameters to create the classifier (as well as assets accessed via context)
+    private final String MODEL_FILE = "detect.tflite";
+    private final String LABELS_FILE = "file:///android_asset/labelmap.txt";
     public static final int INPUT_SIZE = 300;
-    private static final boolean QUANTIZED = true;
+    private final boolean QUANTIZED = true;
+
+    // Stores dimensions of view displaying streamed images
     private final Point DISPLAY_SIZE = new Point();
 
+    // Dimensions of display on SmartEyeGlass
     private final int width;
     private final int height;
-    private final Context context;
+
+    // Reference to utility provided by Sony used to interface with SmartEyeGlass
     private final SmartEyeglassControlUtils utils;
+
+    // Keeps track of whether camera is started or not
     private boolean cameraStarted = false;
+
+    // Origin for text drawn on SmartEyeGlass (although I'm not 100% sure what pointBaseX does vs pointX)
     private int pointX;
     private int pointY;
     private int pointBaseX;
 
+    // Responsible for object detection
     private Classifier mClassifier;
-    private Executor mExecutor;
+
+    // Responsible for drawing bounding boxes
     private MultiBoxTracker mTracker;
-    public static Handler mHandler;
-    private ImageView mImageView;
+
+    // Manages single thread on which object detection is executed
+    private Executor mExecutor;
+
+    // Handles messages from object detection thread as well as from ImageResultActivity
+    private Handler mHandler;
+
+    // Keeps track of whether ImageResultActivity has sent back a reference to the ImageView that displays streamed images
     private boolean imageViewReceived = false;
+
+    // Keeps track of whether object detection thread has finished processing image and is ready for next streamed image
     private boolean readyForNextImage = true;
+
+    // Number of images streamed from SmartEyeGlass camera
     private int imageCounter;
 
     /**
@@ -125,6 +148,7 @@ public final class ImageManager extends ControlExtension {
 
             // When camera is set to record image to a file,
             // log the operation and clean up
+            // TODO: Might be able to delete this method
             @Override
             public void onCameraReceivedFile(final String filePath) {
                 Log.d(Constants.LOG_TAG, "onCameraReceivedFile: " + filePath);
@@ -132,37 +156,46 @@ public final class ImageManager extends ControlExtension {
             }
         };
 
+        // Initialize and configure variables for interfacing with SmartEyeGlass
         utils = new SmartEyeglassControlUtils(hostAppPackageName, listener);
         utils.setRequiredApiVersion(SMARTEYEGLASS_API_VERSION);
         utils.activate(context);
         width = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_width);
         height = context.getResources().getDimensionPixelSize(R.dimen.smarteyeglass_control_height);
 
+        // Initialize the classifier and set number of threads equal to number of cores available on device
         try {
             mClassifier = TFLiteObjectDetectionAPIModel.create(this.context.getAssets(), MODEL_FILE, LABELS_FILE, INPUT_SIZE, QUANTIZED);
+            mClassifier.setNumThreads(Runtime.getRuntime().availableProcessors());
         } catch(IOException e) {
             Log.e(Constants.IMAGE_MANAGER_TAG, "Unable to create Classifier. Error: \n" + e.toString());
         }
 
-        mExecutor = Executors.newSingleThreadExecutor();
+        // Initialize MultiBoxTracker and Executor
         mTracker = new MultiBoxTracker(this.context);
+        mExecutor = Executors.newSingleThreadExecutor();
 
-        // Handles messages that contain results from object detection in ProcessImageRunnable
+        // Initializes a Handler for UI thread
         mHandler = new Handler(Looper.getMainLooper()) {
             @Override
             public void handleMessage(Message msg) {
-                // TODO: Update Eyeglass display with recognition results
+                // TODO: Update Eyeglass display with information retrieved recognition results
+                // Uses message status to decide what to do with message
                 switch(msg.what) {
                     case Constants.IMAGE_PROCESSING_FAILED:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Image processing failed or results not available");
                         break;
                     case Constants.IMAGE_PROCESSING_COMPLETED:
+                        // This is where analysis of results need to be done
+                        readyForNextImage = true;
                         Log.d(Constants.IMAGE_MANAGER_TAG, "Message received! => msg.what = " + msg.what + "\nmsg.obj = " + msg.obj.toString());
                         break;
-                    case Constants.ACTIVITY_REFERENCE_READY:
-                        mImageView = ((ImageResultActivity)msg.obj).findViewById(R.id.overlay);
-                        DISPLAY_SIZE.x = mImageView.getWidth();
-                        DISPLAY_SIZE.y = mImageView.getHeight();
+                    case Constants.IMAGE_VIEW_REFERENCE_READY:
+                        // Use the ImageResultActivity reference given to get dimensions of ImageView containing streamed
+                        // images and configure tracker
+                        ImageView imageView = (ImageView) msg.obj;
+                        DISPLAY_SIZE.x = imageView.getWidth();
+                        DISPLAY_SIZE.y = imageView.getHeight();
                         mTracker.setFrameConfiguration(INPUT_SIZE, INPUT_SIZE, 0);
                         imageViewReceived = true;
                         Log.d(Constants.IMAGE_MANAGER_TAG, "Received activity, extracted imageView");
@@ -235,15 +268,16 @@ public final class ImageManager extends ControlExtension {
         int preferenceId = R.string.preference_key_resolution_movie;
 
         // Get and show quality parameters
-        int jpegQuality = Integer.parseInt(prefs.getString(
-                context.getString(R.string.preference_key_jpeg_quality), "1"));
-        int resolution = Integer.parseInt(prefs.getString(
-                context.getString(preferenceId), "6"));
+        int jpegQuality = Integer.parseInt(prefs.getString(context.getString(R.string.preference_key_jpeg_quality), "1"));
+        int resolution = Integer.parseInt(prefs.getString(context.getString(preferenceId), "6"));
 
         // Set the camera mode to match the setup
         utils.setCameraMode(jpegQuality, resolution, recordingMode);
 
         cameraStarted = false;
+
+        // This moves from title screen when you scroll to app on SmartEyeGlass display to the next layer
+        // asking user to tap to start jpeg stream
         updateDisplay();
     }
 
@@ -294,30 +328,47 @@ public final class ImageManager extends ControlExtension {
             return;
         }
 
+        // If the ImageResultsActivity (and its corresponding ImageView) had not been received in handler,
+        // then DISPLAY_SIZE will not have been initialized yet, so we send this message to ImageResultActivity
         if (!imageViewReceived) {
-            ImageResultActivity.mHandler.obtainMessage(Constants.REQUEST_FOR_ACTIVITY_REFERENCE).sendToTarget();
+            ImageResultActivity.mHandler.obtainMessage(Constants.REQUEST_FOR_IMAGE_VIEW_REFERENCE, mHandler).sendToTarget();
         }
 
         imageCounter++;
 
+        // readyForNextImage is only true when handler received ImageResultActivity reference
         if(readyForNextImage) {
             if(!imageViewReceived) {
                 // Need to release UI thread so it can receive message from ImageResultActivity and set imageViewReceived flag to true
                 return; // Though we really should never enter this if-statement
             }
-            // Use Executor to execute task (Runnable) that runs Tensorflow's object detection API on image from SmartEyeGlass camera
-            mExecutor.execute(new ProcessImageRunnable(mClassifier, mTracker, mHandler, imageCounter, DISPLAY_SIZE, data));
+            // Use Executor to execute task (Runnable) that runs object detection on image from SmartEyeGlass camera
+            mExecutor.execute(new ProcessImageRunnable(mClassifier, mTracker, mHandler, DISPLAY_SIZE, data, imageCounter));
+
+            // Processing image, so thread is busy and shouldn't accept next camera image. If it did, then the work
+            // queue would begin to fill with the next camera images. The object detection thread, after finishing the last
+            // image, would move onto the next image in queue, which at that point would be several frames behind where the
+            // camera is currently. So we would waste a lot of time processing images that are in the past. Instead, after
+            // the thread is finished processing an image, we get the most updated image from camera by only accepting new
+            // images when object detection thread is free.
             readyForNextImage = false;
         }
 
+        // While object detection is occurring, we continue to update image view in ImageResultActivity with streamed images
         ImageResultActivity.mHandler.obtainMessage(Constants.STREAMED_IMAGE_READY, Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(data, 0, data.length), INPUT_SIZE, INPUT_SIZE, true)).sendToTarget();
             
         Log.d(Constants.IMAGE_MANAGER_TAG, "Camera frame was received : #" + imageCounter);
+
+        // imageCounter is continuously updated on SmartEyeGlass display
         updateDisplay();
     }
-    
-    private void updateDisplay()
-    {
+
+    /**
+     * Draw SmartEyeGlass display with updated values
+     */
+    // TODO: Change display to give user information retrieved from detection results - will need audio version as well
+    private void updateDisplay() {
+        // Configure bitmap, canvas, and paint to draw on SmartEyeGlass display
         Bitmap displayBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         displayBitmap.setDensity(DisplayMetrics.DENSITY_DEFAULT);
         Canvas canvas = new Canvas(displayBitmap);
