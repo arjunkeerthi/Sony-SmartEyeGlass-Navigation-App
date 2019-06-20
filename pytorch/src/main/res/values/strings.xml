@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No translation of sample extensions -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Name of app, shown when installing/uninstalling extension -->
+    <string name="app_name">Camera Test</string>
+    <!-- Title of preference activity -->
+    <string name="preference_activity_title">Camera Navigation Extension Settings</string>
+    <!-- Name of extension, shown in preferences -->
+    <string name="extension_name">Camera Navigation</string>
+    <!-- Configuration title shown in preferences -->
+    <string name="configuration_text">Camera Navigation Extension Settings</string>
+    <!-- Menu option shown in preferences -->
+    <string name="preference_option_read_me">READ ME</string>
+    <!-- Read me text shown in dialog -->
+    <string name="preference_option_read_me_txt">The camera extension uses the camera of SmartEyeglass device.\n
+                                                 When you tap the touch sensor, the selected mode shall be activated.</string>
+</resources>
