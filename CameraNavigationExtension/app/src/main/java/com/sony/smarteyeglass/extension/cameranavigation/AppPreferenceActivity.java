@@ -41,10 +41,13 @@ import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.Preference.OnPreferenceClickListener;
 import android.preference.PreferenceActivity;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 
 /**
@@ -80,13 +83,17 @@ public final class AppPreferenceActivity extends PreferenceActivity {
             exit_button.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
                 @Override
                 public boolean onPreferenceClick(Preference p) {
-                    Intent intent = new Intent(AppPreferenceActivity.this, ImageResultActivity.class);
-                    startActivity(intent);
-                    return true;
+                    if(ContextCompat.checkSelfPermission(AppPreferenceActivity.this, "com.sonyericsson.extras.liveware.aef.EXTENSION_PERMISSION") != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(AppPreferenceActivity.this, "com.sony.smarteyeglass.permission.SMARTEYEGLASS") != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(AppPreferenceActivity.this,  "com.sony.smarteyeglass.permission.CAMERA") != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(AppPreferenceActivity.this, new String[]{"com.sonyericsson.extras.liveware.aef.EXTENSION_PERMISSION", "com.sony.smarteyeglass.permission.SMARTEYEGLASS", "com.sony.smarteyeglass.permission.CAMERA"}, 1);
+                    } else {
+                        Intent intent = new Intent(AppPreferenceActivity.this, ImageResultActivity.class);
+                        startActivity(intent);
+                        return true;
+                    }
+                    return false;
                 }
             });
         }
-
     }
 
     @Override
@@ -108,4 +115,23 @@ public final class AppPreferenceActivity extends PreferenceActivity {
                 .setPositiveButton(android.R.string.ok, listener)
                 .create();
     }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if(requestCode == 1) {
+            int numGranted = 0;
+            for(int i = 0; i < grantResults.length; i++) {
+                if(grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    numGranted++;
+                    Log.e("AppPreferenceActivity", "Permission granted for: " + permissions[i]);
+                } else {
+                    Log.e("AppPreferenceActivity", "Permission NOT granted for: " + permissions[i]);
+                }
+            }
+            if(numGranted == 0) {
+                Log.e("AppPreferenceActivity", "No permissions granted.");
+            }
+        }
+    }
+
 }

@@ -14,7 +14,7 @@ import java.util.List;
 public class ProcessImageRunnable implements Runnable {
 
     // We only keep detections with a confidence of at least 0.45 (further testing of this value could be helpful)
-    private final float MINIMUM_CONFIDENCE_LEVEL = 0.45f;
+    private final float MINIMUM_CONFIDENCE_LEVEL = 0.5f;
 
     // Reference to ImageManager handler so we can send new detections
     private Handler mHandler;
