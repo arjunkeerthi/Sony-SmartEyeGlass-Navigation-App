@@ -53,6 +53,12 @@ public final class Constants {
     public static final int REQUEST_FOR_IMAGE_VIEW_REFERENCE = 4;
     public static final int IMAGE_VIEW_REFERENCE_READY = 5;
 
+    public static final int BEEP_FREQUENCY_CLEAR = 6;
+    public static final int BEEP_FREQUENCY_CAREFUL = 7;
+    public static final int BEEP_FREQUENCY_DANGEROUS = 8;
+    public static final int PLAY_BEEP_SOUND = 9;
+    public static final int STOP_BEEPS = 10;
+
     /** Hides the default constructor. */
     private Constants() {
     }

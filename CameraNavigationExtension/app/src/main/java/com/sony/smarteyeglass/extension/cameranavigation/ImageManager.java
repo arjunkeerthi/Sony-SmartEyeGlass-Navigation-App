@@ -34,12 +34,20 @@ package com.sony.smarteyeglass.extension.cameranavigation;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.media.MediaPlayer;
+import android.media.SoundPool;
+import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -48,6 +56,7 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.widget.ImageView;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import com.sony.smarteyeglass.SmartEyeglassControl;
@@ -108,6 +117,8 @@ public final class ImageManager extends ControlExtension {
     // Manages single thread on which object detection is executed
     private Executor mExecutor;
 
+    private Executor mBeepExecutor;
+
     // Handles messages from object detection thread as well as from ImageResultActivity
     private Handler mHandler;
 
@@ -119,6 +130,15 @@ public final class ImageManager extends ControlExtension {
 
     // Number of images streamed from SmartEyeGlass camera
     private int imageCounter;
+
+    // Initial delay between beeps
+    private int beepDelay = 1500;
+
+    // Keeps track of whether should continue to be emitted
+    private boolean doBeeps = true;
+
+    // Indicates when to start beeping
+    private boolean startedBeeps = false;
 
     /**
      * Creates an instance of this control class.
@@ -175,6 +195,9 @@ public final class ImageManager extends ControlExtension {
         mTracker = new MultiBoxTracker(this.context);
         mExecutor = Executors.newSingleThreadExecutor();
 
+        // Initialize Executor to sound beeps
+        mBeepExecutor = Executors.newSingleThreadExecutor();
+
         // Initializes a Handler for UI thread
         mHandler = new Handler(Looper.getMainLooper()) {
             @Override
@@ -199,6 +222,27 @@ public final class ImageManager extends ControlExtension {
                         mTracker.setFrameConfiguration(INPUT_SIZE, INPUT_SIZE, 0);
                         imageViewReceived = true;
                         Log.d(Constants.IMAGE_MANAGER_TAG, "Received activity, extracted imageView");
+                        break;
+                    case Constants.BEEP_FREQUENCY_CLEAR:
+                        Log.e(Constants.LOG_TAG, "Updating beep to clear");
+                        beepDelay = 1500; // TODO: Fine-tune delays
+                        //mSoundPool.setRate(soundStreamId, (float)0.5);
+                        break;
+                    case Constants.BEEP_FREQUENCY_CAREFUL:
+                        Log.e(Constants.LOG_TAG, "Updating beep to careful");
+                        beepDelay = 750;
+                        break;
+                    case Constants.BEEP_FREQUENCY_DANGEROUS:
+                        Log.e(Constants.LOG_TAG, "Updating beep to dangerous");
+                        beepDelay = 300;
+                        break;
+                    case Constants.PLAY_BEEP_SOUND:
+                        Log.e(Constants.LOG_TAG, "Playing beep - check");
+                        playNextSound();
+                        break;
+                    case Constants.STOP_BEEPS:
+                        Log.e(Constants.LOG_TAG, "Stopping beep");
+                        doBeeps = false;
                         break;
                     default:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Message status not recognized, ignoring message");
@@ -297,12 +341,39 @@ public final class ImageManager extends ControlExtension {
         utils.deactivate();
     }
 
+    // Sounds beep in background thread, then sends message back to handler with the specified
+    // delay (beepDelay) in order to emit next beep
+    private void playNextSound() {
+        Log.e(Constants.LOG_TAG, "In playNextSound");
+        mBeepExecutor.execute(new BeepRunnable());
+
+        if(doBeeps) {
+            Message msg = mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
+            mHandler.sendMessageDelayed(msg, beepDelay);
+        }
+    }
+
     /**
      * Received camera event and operation each event.
      *
      * @param event
      */
     private void cameraEventOperation(CameraEvent event) {
+        // Starts the beeping
+        if(!startedBeeps) {
+            mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND).sendToTarget();
+            startedBeeps = true;
+        }
+
+        // Just a test to change between each danger level
+        if(imageCounter > 120) {
+            mHandler.obtainMessage(Constants.STOP_BEEPS).sendToTarget();
+        } else if(imageCounter > 80) {
+            mHandler.obtainMessage(Constants.BEEP_FREQUENCY_DANGEROUS).sendToTarget();
+        } else if(imageCounter > 40) {
+            mHandler.obtainMessage(Constants.BEEP_FREQUENCY_CAREFUL).sendToTarget();
+        }
+
         if (event.getErrorStatus() != 0) {
             Log.d(Constants.LOG_TAG, "error code = " + event.getErrorStatus());
             return;

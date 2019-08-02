@@ -1,12 +1,12 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 26
+    compileSdkVersion 23
 
     defaultConfig {
         applicationId "com.sony.smarteyeglass.extension.cameranavigation"
-        minSdkVersion 19
-        targetSdkVersion 26
+        minSdkVersion 21
+        targetSdkVersion 23
     }
 
     buildTypes {
@@ -36,6 +36,6 @@ dependencies {
     implementation project(':SmartExtensionAPI')
     implementation project(':SmartExtensionUtils')
     implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'com.android.support:appcompat-v7:26.1.0'
+    implementation 'com.android.support:appcompat-v7:23.4.0'
     implementation 'com.android.support.constraint:constraint-layout:1.1.3'
 }
