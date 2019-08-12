@@ -150,7 +150,7 @@ public final class ImageManager extends ControlExtension {
             // handle result according to current recording mode
             @Override
             public void onCameraReceived(final CameraEvent event) {
-                Log.d(Constants.LOG_TAG, "Stream Event coming: " + event.toString());
+                Log.d(Constants.IMAGE_MANAGER_TAG, "Stream Event coming: " + event.toString());
                 cameraEventOperation(event);
             }
 
@@ -158,7 +158,7 @@ public final class ImageManager extends ControlExtension {
             // We just log the error
             @Override
             public void onCameraErrorReceived(final int error) {
-                Log.d(Constants.LOG_TAG, "onCameraErrorReceived: " + error);
+                Log.d(Constants.IMAGE_MANAGER_TAG, "onCameraErrorReceived: " + error);
             }
 
             // When camera is set to record image to a file,
@@ -166,7 +166,7 @@ public final class ImageManager extends ControlExtension {
             // TODO: Might be able to delete this method
             @Override
             public void onCameraReceivedFile(final String filePath) {
-                Log.d(Constants.LOG_TAG, "onCameraReceivedFile: " + filePath);
+                Log.d(Constants.IMAGE_MANAGER_TAG, "onCameraReceivedFile: " + filePath);
                 updateDisplay();
             }
         };
@@ -219,35 +219,35 @@ public final class ImageManager extends ControlExtension {
                         Log.d(Constants.IMAGE_MANAGER_TAG, "Received activity, extracted imageView");
                         break;
                     case Constants.BEEP_FREQUENCY_CLEAR:
-                        Log.e(Constants.LOG_TAG, "Updating beep to clear");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Updating beep to clear");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + msg.obj.toString());
                         beepDelay = 1500; // TODO: Fine-tune beep delay
                         break;
                     case Constants.BEEP_FREQUENCY_CAREFUL:
-                        Log.e(Constants.LOG_TAG, "Updating beep to careful");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Updating beep to careful");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + msg.obj.toString());
                         beepDelay = 750;
                         break;
                     case Constants.BEEP_FREQUENCY_DANGEROUS:
-                        Log.e(Constants.LOG_TAG, "Updating beep to dangerous");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Updating beep to dangerous");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + msg.obj.toString());
                         beepDelay = 300;
                         break;
                     case Constants.PLAY_BEEP_SOUND:
-                        Log.e(Constants.LOG_TAG, "Playing beep - check");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Playing beep - check");
                         playNextSound();
                         break;
                     case Constants.STOP_BEEPS:
-                        Log.e(Constants.LOG_TAG, "Stopping beeps");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Stopping beeps");
                         doBeeps = false;
                         break;
                     case Constants.SERVER_AVAILABLE:
-                        Log.e(Constants.LOG_TAG, "Server is available. Switching to server. Turning beeps on");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Server is available. Switching to server. Turning beeps on");
                         mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
                         serverAvailable = true;
                         break;
                     case Constants.SERVER_UNAVAILABLE:
-                        Log.e(Constants.LOG_TAG, "Server is no longer available. Switching to mobile device. Turning beeps off");
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Server is no longer available. Switching to mobile device. Turning beeps off");
                         mHandler.obtainMessage(Constants.STOP_BEEPS);
                         serverAvailable = false;
                         break;
@@ -257,7 +257,6 @@ public final class ImageManager extends ControlExtension {
                 }
             }
         };
-
 
         // Start thread for socket listening for depth/object data from server
         new ClientSocketThread(mHandler).start();
@@ -283,12 +282,12 @@ public final class ImageManager extends ControlExtension {
      */
     private void initializeCamera() {
         try {
-            Log.d(Constants.LOG_TAG, "startCamera ");
+            Log.d(Constants.IMAGE_MANAGER_TAG, "startCamera ");
             utils.startCamera();
         } catch (ControlCameraException e) {
-            Log.d(Constants.LOG_TAG, "Failed to register listener", e);
+            Log.d(Constants.IMAGE_MANAGER_TAG, "Failed to register listener", e);
         }
-        Log.d(Constants.LOG_TAG, "onResume: Registered listener");
+        Log.d(Constants.IMAGE_MANAGER_TAG, "onResume: Registered listener");
 
         cameraStarted = true;
     }
@@ -341,7 +340,7 @@ public final class ImageManager extends ControlExtension {
     public void onPause() {
         // Stop camera.
         if (cameraStarted) {
-            Log.d(Constants.LOG_TAG, "onPause() : stopCamera");
+            Log.d(Constants.IMAGE_MANAGER_TAG, "onPause() : stopCamera");
             cleanupCamera();
         }
     }
@@ -355,7 +354,7 @@ public final class ImageManager extends ControlExtension {
     // Sounds beep in background thread, then sends message back to handler with the specified
     // delay (beepDelay) in order to emit next beep
     private void playNextSound() {
-        Log.e(Constants.LOG_TAG, "In playNextSound");
+        Log.e(Constants.IMAGE_MANAGER_TAG, "In playNextSound");
         mBeepExecutor.execute(new BeepRunnable());
 
         if (doBeeps) {
@@ -371,12 +370,12 @@ public final class ImageManager extends ControlExtension {
      */
     private void cameraEventOperation(CameraEvent event) {
         if (event.getErrorStatus() != 0) {
-            Log.d(Constants.LOG_TAG, "error code = " + event.getErrorStatus());
+            Log.d(Constants.IMAGE_MANAGER_TAG, "error code = " + event.getErrorStatus());
             return;
         }
 
         if (event.getIndex() != 0) {
-            Log.d(Constants.LOG_TAG, "not operate this event");
+            Log.d(Constants.IMAGE_MANAGER_TAG, "not operate this event");
             return;
         }
 
@@ -390,12 +389,16 @@ public final class ImageManager extends ControlExtension {
 
             if (serverAvailable) {
                 // Send image bytes to socket thread to be sent to server
-                ClientSocketThread.mPictureHandler.obtainMessage(2, data).sendToTarget();
+                ClientSocketThread.mPictureHandler.obtainMessage(Constants.STREAMED_IMAGE_READY_FOR_SERVER, data).sendToTarget();
             } else {
                 // Run object detection on client device
                 // TODO: Look into implementing depth prediction on mobile
                 runObjectDetection(data);
             }
+
+            // While object detection and depth prediction is occurring, we continue to update image
+            // view in ImageResultActivity with streamed images
+            ImageResultActivity.mHandler.obtainMessage(Constants.STREAMED_IMAGE_READY, Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(data, 0, data.length), INPUT_SIZE, INPUT_SIZE, true)).sendToTarget();
         } else {
             Log.e(Constants.IMAGE_MANAGER_TAG, "Data was null or already invalid");
         }
@@ -425,9 +428,6 @@ public final class ImageManager extends ControlExtension {
             // images when object detection thread is free.
             readyForNextImage = false;
         }
-
-        // While object detection is occurring, we continue to update image view in ImageResultActivity with streamed images
-        ImageResultActivity.mHandler.obtainMessage(Constants.STREAMED_IMAGE_READY, Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(data, 0, data.length), INPUT_SIZE, INPUT_SIZE, true)).sendToTarget();
     }
 
     /**

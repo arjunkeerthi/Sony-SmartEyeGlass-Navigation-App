@@ -1,6 +1,5 @@
 package com.sony.smarteyeglass.extension.cameranavigation;
 
-import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -60,7 +59,7 @@ public class ClientSocketThread extends Thread {
         mPictureHandler = new Handler(Looper.getMainLooper()) {
             @Override
             public void handleMessage(Message msg) {
-                if (msg.what == 2) {
+                if (msg.what == Constants.STREAMED_IMAGE_READY_FOR_SERVER) {
                     image = (byte[]) msg.obj;
                     imageReady = true;
                 }
@@ -73,7 +72,7 @@ public class ClientSocketThread extends Thread {
         while(!openSocketConnection()) {
             // Notify main thread that server is unavailable
             mMainHandler.obtainMessage(Constants.SERVER_UNAVAILABLE).sendToTarget();
-            Log.e(Constants.LOG_TAG, "Unable to open client side socket connection");
+            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket connection");
         }
 
         // Notify main thread that client is connected to server and ready to send images
@@ -89,11 +88,11 @@ public class ClientSocketThread extends Thread {
 
                     // Get size of image
                     int originalSize = image.length;
-                    Log.e(Constants.LOG_TAG, "Size of image: " + originalSize);
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Size of image: " + originalSize);
 
                     // Create buffer to store original image size and buffer to store the size
                     // returned from server
-                    Log.e(Constants.LOG_TAG, "Sending image...");
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Sending image...");
                     byte[] originalSizeBuff = ByteBuffer.allocate(4).putInt(originalSize).array();
                     byte[] responseSizeBuff = new byte[4];
 
@@ -109,7 +108,7 @@ public class ClientSocketThread extends Thread {
 
                     // Get elapsed time
                     long end = System.nanoTime();
-                    Log.e(Constants.LOG_TAG, "Response time for size send and confirmation: "
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response time for size send and confirmation: "
                             + (end - start) / 1000000 + " ms");
 
                     // Update total time waiting for size confirmation
@@ -117,14 +116,14 @@ public class ClientSocketThread extends Thread {
 
                     // Convert response from bytes to integer
                     int responseSize = ByteBuffer.wrap(responseSizeBuff).asIntBuffer().get();
-                    Log.e(Constants.LOG_TAG, "Response size: " + responseSize);
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response size: " + responseSize);
 
                     // Only proceed if the original size sent and the response size received are
                     // equal, otherwise break since connection is corrupted somehow
                     if (originalSize != responseSize) break;
 
                     // Time send and receive for image
-                    Log.e(Constants.LOG_TAG, "About to send data");
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "About to send data");
                     start = System.nanoTime();
 
                     // Write bytes for image to output stream
@@ -135,7 +134,7 @@ public class ClientSocketThread extends Thread {
 
                     // Get elapsed time
                     end = System.nanoTime();
-                    Log.e(Constants.LOG_TAG, "Response time for picture send and receive " +
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response time for picture send and receive " +
                             "confirmation: " + (end - start) / 1000000 + " ms");
 
                     // Update time waiting for image confirmation
@@ -144,7 +143,7 @@ public class ClientSocketThread extends Thread {
                     // Only proceed if confirmation was "OK", otherwise break since connection was
                     // corrupted somehow
                     if (!ok.equals("OK")) break;
-                    Log.e(Constants.LOG_TAG, "Confirmation message: " + ok);
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Confirmation message: " + ok);
 
                     // Read the danger level as an integer (depth information)
                     int dangerLevel = Integer.parseInt(mBufferedReader.readLine());
@@ -160,10 +159,10 @@ public class ClientSocketThread extends Thread {
                     // Send confirmation that results were received back to server
                     mOutputStream.write("OK".getBytes());
 
-                    Log.e(Constants.LOG_TAG, detections.toString());
-                    Log.e(Constants.LOG_TAG, "Average size confirmation: " +
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, detections.toString());
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average size confirmation: " +
                             sumMillisSizeConf / count + " ms");
-                    Log.e(Constants.LOG_TAG, "Average image confirmation: " +
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average image confirmation: " +
                             sumMillisImageConf / count + " ms");
 
                     // Send message to ImageManager to update beep frequency based on danger level
@@ -181,14 +180,14 @@ public class ClientSocketThread extends Thread {
                             mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_DANGEROUS,
                                     detections).sendToTarget();
                         default:
-                            Log.e(Constants.LOG_TAG, "Something bad happened.");
+                            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Something bad happened.");
                     }
                 } catch (IOException e) {
                     // Try to re-establish socket connection
                     do {
                         // Notify main thread that server is unavailable
                         mMainHandler.obtainMessage(Constants.SERVER_UNAVAILABLE).sendToTarget();
-                        Log.e(Constants.LOG_TAG, "Unable to open client side socket " +
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket " +
                                 "connection");
                     } while(!openSocketConnection());
 
@@ -203,7 +202,7 @@ public class ClientSocketThread extends Thread {
         try {
             // Try to establish a socket connection with server
             mSocket = new Socket(IP, PORT);
-            Log.e(Constants.LOG_TAG, "Connected to server");
+            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Connected to server");
 
             // Initialize output and input streams
             mOutputStream = mSocket.getOutputStream();
@@ -211,7 +210,7 @@ public class ClientSocketThread extends Thread {
 
             // Initialize reader for input stream
             mBufferedReader = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
-            Log.e(Constants.LOG_TAG, "IO streams initialized, ready to receive results...");
+            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "IO streams initialized, ready to receive results...");
             return true;
         } catch (IOException e) {
             return false;

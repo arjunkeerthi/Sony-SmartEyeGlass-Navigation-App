@@ -44,8 +44,9 @@ public final class Constants {
     public static final String IMAGE_MANAGER_TAG = "ImageManager";
     public static final String IMAGE_RESULT_ACTIVITY_TAG = "ImageResultActivity";
     public static final String PROCESS_IMAGE_RUNNABLE_TAG = "ProcessImageRunnable";
+    public static final String CLIENT_SOCKET_THREAD_TAG = "ClientSocketThread";
 
-    // Message status tags for use by handlers
+    // Message status tags for use by handlers to do object detection on mobile device
     public static final int IMAGE_PROCESSING_FAILED = 0;
     public static final int IMAGE_PROCESSING_COMPLETED = 1;
     public static final int STREAMED_IMAGE_READY = 2;
@@ -53,14 +54,17 @@ public final class Constants {
     public static final int REQUEST_FOR_IMAGE_VIEW_REFERENCE = 4;
     public static final int IMAGE_VIEW_REFERENCE_READY = 5;
 
+    // Message tags used by handlers to start, stop, and update beeps
     public static final int BEEP_FREQUENCY_CLEAR = 6;
     public static final int BEEP_FREQUENCY_CAREFUL = 7;
     public static final int BEEP_FREQUENCY_DANGEROUS = 8;
     public static final int PLAY_BEEP_SOUND = 9;
     public static final int STOP_BEEPS = 10;
 
-    public static final int SERVER_AVAILABLE = 11;
-    public static final int SERVER_UNAVAILABLE = 12;
+    // Message tags used by handlers to send images to server and check server availability
+    public static final int STREAMED_IMAGE_READY_FOR_SERVER = 11;
+    public static final int SERVER_AVAILABLE = 12;
+    public static final int SERVER_UNAVAILABLE = 13;
 
     /** Hides the default constructor. */
     private Constants() {
