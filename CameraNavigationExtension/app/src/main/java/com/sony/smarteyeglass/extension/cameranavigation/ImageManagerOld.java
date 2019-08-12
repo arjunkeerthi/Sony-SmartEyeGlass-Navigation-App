@@ -1,23 +1,17 @@
 /*
 Copyright (c) 2011, Sony Mobile Communications Inc.
 Copyright (c) 2014, Sony Corporation
-
  All rights reserved.
-
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
-
  * Redistributions of source code must retain the above copyright notice, this
  list of conditions and the following disclaimer.
-
  * Redistributions in binary form must reproduce the above copyright notice,
  this list of conditions and the following disclaimer in the documentation
  and/or other materials provided with the distribution.
-
  * Neither the name of the Sony Mobile Communications Inc.
  nor the names of its contributors may be used to endorse or promote
  products derived from this software without specific prior written permission.
-
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -34,12 +28,20 @@ package com.sony.smarteyeglass.extension.cameranavigation;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.media.MediaPlayer;
+import android.media.SoundPool;
+import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -47,11 +49,10 @@ import android.preference.PreferenceManager;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.widget.ImageView;
-
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-
 import com.sony.smarteyeglass.SmartEyeglassControl;
 import com.sony.smarteyeglass.extension.cameranavigation.tflite.Classifier;
 import com.sony.smarteyeglass.extension.cameranavigation.tflite.MultiBoxTracker;
@@ -69,7 +70,7 @@ import com.sonyericsson.extras.liveware.extension.util.control.ControlTouchEvent
  * Demonstrates how to listen to camera events, process
  * camera data, display pictures, and store image data to external storage.
  */
-public final class ImageManager extends ControlExtension {
+public final class ImageManagerOld extends ControlExtension {
 
     // Uses SmartEyeglass API version
     private static final int SMARTEYEGLASS_API_VERSION = 3; // Change to 4?
@@ -110,7 +111,7 @@ public final class ImageManager extends ControlExtension {
     // Manages single thread on which object detection is executed
     private Executor mExecutor;
 
-    // Manages single thread that plays beep sound
+
     private Executor mBeepExecutor;
 
     // Handles messages from object detection thread as well as from ImageResultActivity
@@ -131,8 +132,8 @@ public final class ImageManager extends ControlExtension {
     // Keeps track of whether should continue to be emitted
     private boolean doBeeps = true;
 
-    // Keeps track of when server is available and images should be sent to it
-    private boolean serverAvailable = false;
+    // Indicates when to start beeping
+    private boolean startedBeeps = false;
 
     /**
      * Creates an instance of this control class.
@@ -140,9 +141,8 @@ public final class ImageManager extends ControlExtension {
      * @param context            The context.
      * @param hostAppPackageName Package name of host application.
      */
-    public ImageManager(final Context context, final String hostAppPackageName) {
+    public ImageManagerOld(final Context context, final String hostAppPackageName) {
         super(context, hostAppPackageName);
-
         this.context = context;
         // Initialize listener for camera events
         SmartEyeglassEventListener listener = new SmartEyeglassEventListener() {
@@ -182,7 +182,7 @@ public final class ImageManager extends ControlExtension {
         try {
             mClassifier = TFLiteObjectDetectionAPIModel.create(this.context.getAssets(), MODEL_FILE, LABELS_FILE, INPUT_SIZE, QUANTIZED);
             mClassifier.setNumThreads(Runtime.getRuntime().availableProcessors());
-        } catch (IOException e) {
+        } catch(IOException e) {
             Log.e(Constants.IMAGE_MANAGER_TAG, "Unable to create Classifier. Error: \n" + e.toString());
         }
 
@@ -193,13 +193,13 @@ public final class ImageManager extends ControlExtension {
         // Initialize Executor to sound beeps
         mBeepExecutor = Executors.newSingleThreadExecutor();
 
-        // Initializes Handler for UI thread
+        // Initializes a Handler for UI thread
         mHandler = new Handler(Looper.getMainLooper()) {
             @Override
             public void handleMessage(Message msg) {
                 // TODO: Update Eyeglass display with information retrieved recognition results
                 // Uses message status to decide what to do with message
-                switch (msg.what) {
+                switch(msg.what) {
                     case Constants.IMAGE_PROCESSING_FAILED:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Image processing failed or results not available");
                         break;
@@ -220,17 +220,15 @@ public final class ImageManager extends ControlExtension {
                         break;
                     case Constants.BEEP_FREQUENCY_CLEAR:
                         Log.e(Constants.LOG_TAG, "Updating beep to clear");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
-                        beepDelay = 1500; // TODO: Fine-tune beep delay
+                        beepDelay = 1500; // TODO: Fine-tune delays
+                        //mSoundPool.setRate(soundStreamId, (float)0.5);
                         break;
                     case Constants.BEEP_FREQUENCY_CAREFUL:
                         Log.e(Constants.LOG_TAG, "Updating beep to careful");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
                         beepDelay = 750;
                         break;
                     case Constants.BEEP_FREQUENCY_DANGEROUS:
                         Log.e(Constants.LOG_TAG, "Updating beep to dangerous");
-                        Log.e(Constants.LOG_TAG, "Objects (server): " + msg.obj.toString());
                         beepDelay = 300;
                         break;
                     case Constants.PLAY_BEEP_SOUND:
@@ -238,18 +236,8 @@ public final class ImageManager extends ControlExtension {
                         playNextSound();
                         break;
                     case Constants.STOP_BEEPS:
-                        Log.e(Constants.LOG_TAG, "Stopping beeps");
+                        Log.e(Constants.LOG_TAG, "Stopping beep");
                         doBeeps = false;
-                        break;
-                    case Constants.SERVER_AVAILABLE:
-                        Log.e(Constants.LOG_TAG, "Server is available. Switching to server. Turning beeps on");
-                        mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
-                        serverAvailable = true;
-                        break;
-                    case Constants.SERVER_UNAVAILABLE:
-                        Log.e(Constants.LOG_TAG, "Server is no longer available. Switching to mobile device. Turning beeps off");
-                        mHandler.obtainMessage(Constants.STOP_BEEPS);
-                        serverAvailable = false;
                         break;
                     default:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Message status not recognized, ignoring message");
@@ -257,10 +245,6 @@ public final class ImageManager extends ControlExtension {
                 }
             }
         };
-
-
-        // Start thread for socket listening for depth/object data from server
-        new ClientSocketThread(mHandler).start();
     }
 
     /**
@@ -358,7 +342,7 @@ public final class ImageManager extends ControlExtension {
         Log.e(Constants.LOG_TAG, "In playNextSound");
         mBeepExecutor.execute(new BeepRunnable());
 
-        if (doBeeps) {
+        if(doBeeps) {
             Message msg = mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
             mHandler.sendMessageDelayed(msg, beepDelay);
         }
@@ -370,47 +354,57 @@ public final class ImageManager extends ControlExtension {
      * @param event
      */
     private void cameraEventOperation(CameraEvent event) {
+        // Starts the beeping
+        if(!startedBeeps) {
+            mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND).sendToTarget();
+            startedBeeps = true;
+        }
+
+        // Just a test to change between each danger level
+        if(imageCounter > 120) {
+            mHandler.obtainMessage(Constants.STOP_BEEPS).sendToTarget();
+        } else if(imageCounter > 80) {
+            mHandler.obtainMessage(Constants.BEEP_FREQUENCY_DANGEROUS).sendToTarget();
+        } else if(imageCounter > 40) {
+            mHandler.obtainMessage(Constants.BEEP_FREQUENCY_CAREFUL).sendToTarget();
+        }
+
         if (event.getErrorStatus() != 0) {
             Log.d(Constants.LOG_TAG, "error code = " + event.getErrorStatus());
             return;
         }
 
-        if (event.getIndex() != 0) {
+        if(event.getIndex() != 0){
             Log.d(Constants.LOG_TAG, "not operate this event");
             return;
         }
 
+        Bitmap bitmap = null;
+        byte[] data = null;
+
         if ((event.getData() != null) && ((event.getData().length) > 0)) {
-            byte[] data = event.getData();
-            imageCounter++;
-            Log.d(Constants.IMAGE_MANAGER_TAG, "Camera frame was received : #" + imageCounter);
-
-            // imageCounter is continuously updated on SmartEyeGlass display
-            updateDisplay();
-
-            if (serverAvailable) {
-                // Send image bytes to socket thread to be sent to server
-                ClientSocketThread.mPictureHandler.obtainMessage(2, data).sendToTarget();
-            } else {
-                // Run object detection on client device
-                // TODO: Look into implementing depth prediction on mobile
-                runObjectDetection(data);
-            }
+            data = event.getData();
+            bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
         } else {
             Log.e(Constants.IMAGE_MANAGER_TAG, "Data was null or already invalid");
         }
-    }
 
-    private void runObjectDetection(byte[] data) {
+        if (bitmap == null) {
+            Log.e(Constants.LOG_TAG, "bitmap == null");
+            return;
+        }
+
         // If the ImageResultsActivity (and its corresponding ImageView) had not been received in handler,
         // then DISPLAY_SIZE will not have been initialized yet, so we send this message to ImageResultActivity
         if (!imageViewReceived) {
             ImageResultActivity.mHandler.obtainMessage(Constants.REQUEST_FOR_IMAGE_VIEW_REFERENCE, mHandler).sendToTarget();
         }
 
+        imageCounter++;
+
         // readyForNextImage is only true when handler received ImageResultActivity reference
-        if (readyForNextImage) {
-            if (!imageViewReceived) {
+        if(readyForNextImage) {
+            if(!imageViewReceived) {
                 // Need to release UI thread so it can receive message from ImageResultActivity and set imageViewReceived flag to true
                 return; // Though we really should never enter this if-statement
             }
@@ -428,6 +422,11 @@ public final class ImageManager extends ControlExtension {
 
         // While object detection is occurring, we continue to update image view in ImageResultActivity with streamed images
         ImageResultActivity.mHandler.obtainMessage(Constants.STREAMED_IMAGE_READY, Bitmap.createScaledBitmap(BitmapFactory.decodeByteArray(data, 0, data.length), INPUT_SIZE, INPUT_SIZE, true)).sendToTarget();
+
+        Log.d(Constants.IMAGE_MANAGER_TAG, "Camera frame was received : #" + imageCounter);
+
+        // imageCounter is continuously updated on SmartEyeGlass display
+        updateDisplay();
     }
 
     /**

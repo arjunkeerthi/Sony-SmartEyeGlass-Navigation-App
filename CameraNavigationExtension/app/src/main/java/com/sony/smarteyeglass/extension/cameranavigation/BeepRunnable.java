@@ -6,8 +6,8 @@ import android.media.AudioTrack;
 
 // Responsible for emitting beep
 public class BeepRunnable implements Runnable {
-    private final int BEEP_FREQUENCY = 900; // TODO: Adjust frequency and duration
-    private final double BEEP_DURATION = 0.15;
+    private final int BEEP_FREQUENCY = 1000; // TODO: Adjust frequency and duration
+    private final double BEEP_DURATION = 0.125;
 
     @Override
     public void run() {

@@ -59,6 +59,9 @@ public final class Constants {
     public static final int PLAY_BEEP_SOUND = 9;
     public static final int STOP_BEEPS = 10;
 
+    public static final int SERVER_AVAILABLE = 11;
+    public static final int SERVER_UNAVAILABLE = 12;
+
     /** Hides the default constructor. */
     private Constants() {
     }
