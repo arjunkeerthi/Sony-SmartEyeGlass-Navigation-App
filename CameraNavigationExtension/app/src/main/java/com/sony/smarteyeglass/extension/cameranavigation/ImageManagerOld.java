@@ -65,6 +65,26 @@ import com.sonyericsson.extras.liveware.aef.control.Control;
 import com.sonyericsson.extras.liveware.extension.util.control.ControlExtension;
 import com.sonyericsson.extras.liveware.extension.util.control.ControlTouchEvent;
 
+
+/**
+ * STOP STOP STOP STOP STOP
+ *
+ *
+ * DO NOT USE THIS FILE - OLD!!!!!!!
+ *
+ *
+ * USE ImageManager INSTEAD
+ *
+ *
+ * THIS IS ONLY FOR REFERENCE TO ORIGINAL VERSION IF YOU SCREW SOMETHING UP
+ *
+ *
+ * I DON'T EVEN KNOW IF THIS ONE WORKS!!!!!!!
+ *
+ *
+ * STOP STOP STOP STOP STOP
+ */
+
 /**
  * Shows how to access the SmartEyeglass camera to capture pictures.
  * Demonstrates how to listen to camera events, process
