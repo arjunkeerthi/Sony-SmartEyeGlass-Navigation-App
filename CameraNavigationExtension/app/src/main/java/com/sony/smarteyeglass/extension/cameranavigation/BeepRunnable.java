@@ -31,7 +31,7 @@ public class BeepRunnable implements Runnable {
             mBuffer[i] = (short) (mSound[i]*Short.MAX_VALUE);
         }
 
-        mAudioTrack.setStereoVolume(AudioTrack.getMaxVolume(), AudioTrack.getMaxVolume());
+        mAudioTrack.setStereoVolume(AudioTrack.getMaxVolume()/8, AudioTrack.getMaxVolume()/8);
         mAudioTrack.play();
 
         mAudioTrack.write(mBuffer, 0, mSound.length);

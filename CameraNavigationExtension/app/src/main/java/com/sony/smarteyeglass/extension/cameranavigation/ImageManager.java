@@ -44,13 +44,18 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
+import android.speech.tts.TextToSpeech;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.widget.ImageView;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import com.sony.smarteyeglass.SmartEyeglassControl;
 import com.sony.smarteyeglass.extension.cameranavigation.tflite.Classifier;
@@ -116,6 +121,12 @@ public final class ImageManager extends ControlExtension {
     // Handles messages from object detection thread as well as from ImageResultActivity
     private Handler mHandler;
 
+    // For reading out objects and danger zone to user
+    TextToSpeech mTextToSpeech;
+
+    BlockingQueue<Integer> mIntegerBlockingQueue;
+    BlockingQueue<String> mStringBlockingQueue;
+
     // Keeps track of whether ImageResultActivity has sent back a reference to the ImageView that displays streamed images
     private boolean imageViewReceived = false;
 
@@ -128,11 +139,12 @@ public final class ImageManager extends ControlExtension {
     // Initial delay between beeps
     private int beepDelay = 1500;
 
-    // Keeps track of whether should continue to be emitted
-    private boolean doBeeps = true;
-
-    // Keeps track of when server is available and images should be sent to it
+    // Keeps track of when server is available and images should be sent to it - also controls whether beeps play
     private boolean serverAvailable = false;
+
+    private int speakCounter = 0;
+
+    private String dangerSide = "NONE";
 
     /**
      * Creates an instance of this control class.
@@ -193,6 +205,26 @@ public final class ImageManager extends ControlExtension {
         // Initialize Executor to sound beeps
         mBeepExecutor = Executors.newSingleThreadExecutor();
 
+        // Initialize TextToSpeech
+        mTextToSpeech = new TextToSpeech(context, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status == TextToSpeech.SUCCESS) {
+                    int result = mTextToSpeech.setLanguage(Locale.ENGLISH);
+                    if(result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED){
+                        Log.e("error", "This Language is not supported");
+                    } else {
+                        Log.e("success", "We good!!!");
+                    }
+                } else {
+                    Log.e("error", "Initialization failed");
+                }
+            }
+        });
+
+        mIntegerBlockingQueue = new LinkedBlockingQueue<>();
+        mStringBlockingQueue = new LinkedBlockingQueue<>();
+
         // Initializes Handler for UI thread
         mHandler = new Handler(Looper.getMainLooper()) {
             @Override
@@ -225,30 +257,54 @@ public final class ImageManager extends ControlExtension {
                         break;
                     case Constants.BEEP_FREQUENCY_CAREFUL:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Updating beep to careful");
-                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + msg.obj.toString());
+                        ClientSocketThread.Data dataC = (ClientSocketThread.Data)msg.obj;
+                        ArrayList<Detection> objectsCareful = dataC.mDetections;
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + objectsCareful.toString());
+                        if(speakCounter % 3 == 0) {
+                            if(!dataC.mDangerSide.equals(dangerSide)) {
+                                convertTextToSpeech(dataC.mDangerSide);
+                                dangerSide = dataC.mDangerSide;
+                            }
+                            for (Detection object : objectsCareful) {
+                                convertTextToSpeech(object.getLabel());
+                            }
+                        }
+                        speakCounter++;
                         beepDelay = 750;
                         break;
                     case Constants.BEEP_FREQUENCY_DANGEROUS:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Updating beep to dangerous");
-                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + msg.obj.toString());
+                        ClientSocketThread.Data dataD = (ClientSocketThread.Data)msg.obj;
+                        ArrayList<Detection> objectsDangerous = dataD.mDetections;
+                        Log.e(Constants.IMAGE_MANAGER_TAG, "Objects (server): " + objectsDangerous.toString());
+                        if(speakCounter % 3 == 0) {
+                            if(!dataD.mDangerSide.equals(dangerSide)) {
+                                convertTextToSpeech(dataD.mDangerSide);
+                                dangerSide = dataD.mDangerSide;
+                            }
+                            for (Detection object : objectsDangerous) {
+                                convertTextToSpeech(object.getLabel());
+                            }
+                        }
+                        speakCounter++;
                         beepDelay = 300;
                         break;
                     case Constants.PLAY_BEEP_SOUND:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Playing beep - check");
                         playNextSound();
                         break;
-                    case Constants.STOP_BEEPS:
-                        Log.e(Constants.IMAGE_MANAGER_TAG, "Stopping beeps");
-                        doBeeps = false;
-                        break;
+                    /*case Constants.STOP_BEEPS:
+                        //Log.e(Constants.IMAGE_MANAGER_TAG, "Stopping beeps");
+                        break;*/
                     case Constants.SERVER_AVAILABLE:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Server is available. Switching to server. Turning beeps on");
-                        mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
+                        mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND).sendToTarget();
                         serverAvailable = true;
+                        //Log.e(Constants.IMAGE_MANAGER_TAG, "After setting serverAvailable: " + serverAvailable);
+                        ImageResultActivity.mHandler.obtainMessage(Constants.CLEAR_BOUNDING_BOXES).sendToTarget();
                         break;
                     case Constants.SERVER_UNAVAILABLE:
                         Log.e(Constants.IMAGE_MANAGER_TAG, "Server is no longer available. Switching to mobile device. Turning beeps off");
-                        mHandler.obtainMessage(Constants.STOP_BEEPS);
                         serverAvailable = false;
                         break;
                     default:
@@ -260,6 +316,7 @@ public final class ImageManager extends ControlExtension {
 
         // Start thread for socket listening for depth/object data from server
         new ClientSocketThread(mHandler).start();
+        new ClientSocketStatusThread(mHandler).start();
     }
 
     /**
@@ -354,13 +411,21 @@ public final class ImageManager extends ControlExtension {
     // Sounds beep in background thread, then sends message back to handler with the specified
     // delay (beepDelay) in order to emit next beep
     private void playNextSound() {
-        Log.e(Constants.IMAGE_MANAGER_TAG, "In playNextSound");
         mBeepExecutor.execute(new BeepRunnable());
-
-        if (doBeeps) {
+        Log.e(Constants.IMAGE_MANAGER_TAG, "In playNextSound: serverAvailable = " + serverAvailable);
+        if (serverAvailable) {
             Message msg = mHandler.obtainMessage(Constants.PLAY_BEEP_SOUND);
             mHandler.sendMessageDelayed(msg, beepDelay);
         }
+    }
+
+    private void convertTextToSpeech(String text) {
+        if(text==null||"".equals(text))
+        {
+            text = "Content not available";
+            mTextToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null);
+        }else
+            mTextToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null);
     }
 
     /**
@@ -386,7 +451,7 @@ public final class ImageManager extends ControlExtension {
 
             // imageCounter is continuously updated on SmartEyeGlass display
             updateDisplay();
-
+            Log.e(Constants.IMAGE_MANAGER_TAG, "serverAvailable: " + serverAvailable);
             if (serverAvailable) {
                 // Send image bytes to socket thread to be sent to server
                 ClientSocketThread.mPictureHandler.obtainMessage(Constants.STREAMED_IMAGE_READY_FOR_SERVER, data).sendToTarget();

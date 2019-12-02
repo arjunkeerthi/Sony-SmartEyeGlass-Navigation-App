@@ -51,20 +51,22 @@ public final class Constants {
     public static final int IMAGE_PROCESSING_COMPLETED = 1;
     public static final int STREAMED_IMAGE_READY = 2;
     public static final int BOUNDING_BOXES_READY = 3;
-    public static final int REQUEST_FOR_IMAGE_VIEW_REFERENCE = 4;
-    public static final int IMAGE_VIEW_REFERENCE_READY = 5;
+    public static final int CLEAR_BOUNDING_BOXES = 4;
+    public static final int REQUEST_FOR_IMAGE_VIEW_REFERENCE = 5;
+    public static final int IMAGE_VIEW_REFERENCE_READY = 6;
 
     // Message tags used by handlers to start, stop, and update beeps
-    public static final int BEEP_FREQUENCY_CLEAR = 6;
-    public static final int BEEP_FREQUENCY_CAREFUL = 7;
-    public static final int BEEP_FREQUENCY_DANGEROUS = 8;
-    public static final int PLAY_BEEP_SOUND = 9;
-    public static final int STOP_BEEPS = 10;
+    public static final int BEEP_FREQUENCY_CLEAR = 7;
+    public static final int BEEP_FREQUENCY_CAREFUL = 8;
+    public static final int BEEP_FREQUENCY_DANGEROUS = 9;
+    public static final int PLAY_BEEP_SOUND = 10;
+    public static final int STOP_BEEPS = 11;
 
     // Message tags used by handlers to send images to server and check server availability
-    public static final int STREAMED_IMAGE_READY_FOR_SERVER = 11;
-    public static final int SERVER_AVAILABLE = 12;
-    public static final int SERVER_UNAVAILABLE = 13;
+    public static final int STREAMED_IMAGE_READY_FOR_SERVER = 12;
+    public static final int SERVER_AVAILABLE = 13;
+    public static final int SERVER_UNAVAILABLE = 14;
+    public static final int SERVER_STARTED_RESPONSE_RECEIVED = 15;
 
     /** Hides the default constructor. */
     private Constants() {

@@ -11,8 +11,7 @@ import android.widget.ImageView;
 
 public class ImageResultActivity extends AppCompatActivity {
 
-    // Handler to receive messages from ImageManager and ProcessImageRunnable (static so can be accessed
-    // without having to wait for messages and references to be sent)
+    // Handler to receive messages from ImageManager and ProcessImageRunnable
     public static Handler mHandler;
 
     @Override
@@ -36,6 +35,10 @@ public class ImageResultActivity extends AppCompatActivity {
                     case Constants.BOUNDING_BOXES_READY:
                         overlay.setImageBitmap((Bitmap)msg.obj);
                         Log.d(Constants.IMAGE_RESULT_ACTIVITY_TAG, "Drew bounding boxes in overlay");
+                        break;
+                    case Constants.CLEAR_BOUNDING_BOXES:
+                        overlay.setImageBitmap(null);
+                        Log.d(Constants.IMAGE_RESULT_ACTIVITY_TAG, "Cleared bounding boxes");
                         break;
                     case Constants.REQUEST_FOR_IMAGE_VIEW_REFERENCE:
                         ((Handler)msg.obj).obtainMessage(Constants.IMAGE_VIEW_REFERENCE_READY, overlay).sendToTarget();

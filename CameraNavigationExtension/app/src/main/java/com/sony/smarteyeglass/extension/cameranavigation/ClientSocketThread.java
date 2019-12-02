@@ -7,7 +7,6 @@ import android.util.Log;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -15,28 +14,25 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 public class ClientSocketThread extends Thread {
-    // Reference for handler in main thread responsible for updating beep frequency
-    private Handler mMainHandler;
-
     // Reference for handler in main thread responsible for sending pictures from camera2api
     public static Handler mPictureHandler;
 
     // Client socket connection. Sends images to server and receives results
     private Socket mSocket;
 
-    // Sends data to server
-    private OutputStream mOutputStream;
-
-    // Reads data from server
-    private InputStream mInputStream;
+    // Reference for handler in main thread responsible for updating beep frequency
+    private Handler mMainHandler;
 
     // Reads results from server
     private BufferedReader mBufferedReader;
 
     // IP and PORT for server
     // TODO: Change IP to correspond to actual server used
-    private final String IP = "10.0.0.30";
+    private final String IP = "192.168.1.2";
     private final int PORT = 9002;
+
+    // Sends data to server
+    private OutputStream mOutputStream;
 
     // Keeps track of whether an image is ready to be sent to server
     private boolean imageReady = false;
@@ -51,17 +47,34 @@ public class ClientSocketThread extends Thread {
     // Sames as sumMillisSizeConf, but to send image and receive confirmation
     private int sumMillisImageConf = 0;
 
-    // Number of images sent and processed
     private int count = 0;
+
+    //private int originalSize = 0;
+
+    private boolean serverReady = false;
+
+    private boolean isConnected = false;
+
+    private boolean imageSent = true;
+
+    private byte[] copyImage;
 
     public ClientSocketThread(Handler handler) {
         mMainHandler = handler;
         mPictureHandler = new Handler(Looper.getMainLooper()) {
             @Override
             public void handleMessage(Message msg) {
-                if (msg.what == Constants.STREAMED_IMAGE_READY_FOR_SERVER) {
-                    image = (byte[]) msg.obj;
-                    imageReady = true;
+                switch(msg.what) {
+                    case Constants.STREAMED_IMAGE_READY_FOR_SERVER:
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Image updated");
+                        image = (byte[]) msg.obj;
+                        imageReady = true;
+                        break;
+                    case Constants.SERVER_UNAVAILABLE:
+                        serverReady = false;
+                        isConnected = false;
+                    case Constants.SERVER_AVAILABLE:
+                        serverReady = true;
                 }
             }
         };
@@ -70,130 +83,141 @@ public class ClientSocketThread extends Thread {
     public void run() {
         // Try to open socket connection until successful
         while(!openSocketConnection()) {
-            // Notify main thread that server is unavailable
-            mMainHandler.obtainMessage(Constants.SERVER_UNAVAILABLE).sendToTarget();
-            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket connection");
+            isConnected = false;
+            //Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket connection");
         }
 
-        // Notify main thread that client is connected to server and ready to send images
-        mMainHandler.obtainMessage(Constants.SERVER_AVAILABLE).sendToTarget();
+        isConnected = true;
 
-        while (mSocket.isConnected()) {
-            if (imageReady) {
-                try {
-                    // Set to false at beginning so after this iteration we can continue on to next
-                    // image that was retrieved during this iteration
-                    imageReady = false;
+        while(!serverReady) {
+            // Wait (though at this point serverReady should be true)
+        }
+
+        while (true) {
+            try {
+                if(!serverReady || !isConnected) {
+                    throw new IOException();
+                }
+                if (imageReady && imageSent) {
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Entered if to send size");
+                    // Update image that will be sent
+                    copyImage = image;
                     count++;
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Size of image: " + copyImage.length);
 
-                    // Get size of image
-                    int originalSize = image.length;
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Size of image: " + originalSize);
-
-                    // Create buffer to store original image size and buffer to store the size
-                    // returned from server
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Sending image...");
-                    byte[] originalSizeBuff = ByteBuffer.allocate(4).putInt(originalSize).array();
-                    byte[] responseSizeBuff = new byte[4];
-
-                    // Time how long it takes to send size and receive confirmation size from server
-                    long start = System.nanoTime();
+                    // Create buffer to store original image size
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Sending size of image...");
+                    byte[] sizeBuff = ByteBuffer.allocate(4).putInt(copyImage.length).array();
 
                     // Write the size of image to the output stream for connection
-                    mOutputStream.write(originalSizeBuff);
-
-                    // Read the size that the server sends back (this is the confirmation to ensure
-                    // that server got the right size)
-                    mInputStream.read(responseSizeBuff);
-
-                    // Get elapsed time
-                    long end = System.nanoTime();
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response time for size send and confirmation: "
-                            + (end - start) / 1000000 + " ms");
-
-                    // Update total time waiting for size confirmation
-                    sumMillisSizeConf += (end - start) / 1000000;
-
-                    // Convert response from bytes to integer
-                    int responseSize = ByteBuffer.wrap(responseSizeBuff).asIntBuffer().get();
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response size: " + responseSize);
-
-                    // Only proceed if the original size sent and the response size received are
-                    // equal, otherwise break since connection is corrupted somehow
-                    if (originalSize != responseSize) break;
-
-                    // Time send and receive for image
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "About to send data");
-                    start = System.nanoTime();
-
-                    // Write bytes for image to output stream
-                    mOutputStream.write(image);
-
-                    // Read confirmation from server that image was received
-                    String ok = mBufferedReader.readLine();
-
-                    // Get elapsed time
-                    end = System.nanoTime();
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response time for picture send and receive " +
-                            "confirmation: " + (end - start) / 1000000 + " ms");
-
-                    // Update time waiting for image confirmation
-                    sumMillisImageConf += (end - start) / 1000000;
-
-                    // Only proceed if confirmation was "OK", otherwise break since connection was
-                    // corrupted somehow
-                    if (!ok.equals("OK")) break;
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Confirmation message: " + ok);
-
-                    // Read the danger level as an integer (depth information)
-                    int dangerLevel = Integer.parseInt(mBufferedReader.readLine());
-
-                    // Read the detections and store them
-                    String result;
-                    ArrayList<Detection> detections = new ArrayList<>();
-                    while ((result = mBufferedReader.readLine()) != null) {
-                        if (result.equals("END")) break;
-                        detections.add(new Detection(result));
-                    }
-
-                    // Send confirmation that results were received back to server
-                    mOutputStream.write("OK".getBytes());
-
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, detections.toString());
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average size confirmation: " +
-                            sumMillisSizeConf / count + " ms");
-                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average image confirmation: " +
-                            sumMillisImageConf / count + " ms");
-
-                    // Send message to ImageManager to update beep frequency based on danger level
-                    // and send detections
-                    switch (dangerLevel) {
-                        case 0:
-                            mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_CLEAR,
-                                    detections).sendToTarget();
-                            break;
-                        case 1:
-                            mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_CAREFUL,
-                                    detections).sendToTarget();
-                            break;
-                        case 2:
-                            mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_DANGEROUS,
-                                    detections).sendToTarget();
-                        default:
-                            Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Something bad happened.");
-                    }
-                } catch (IOException e) {
-                    // Try to re-establish socket connection
-                    do {
-                        // Notify main thread that server is unavailable
-                        mMainHandler.obtainMessage(Constants.SERVER_UNAVAILABLE).sendToTarget();
-                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket " +
-                                "connection");
-                    } while(!openSocketConnection());
-
-                    // Notify main thread that server is available again
-                    mMainHandler.obtainMessage(Constants.SERVER_AVAILABLE).sendToTarget();
+                    mOutputStream.write(sizeBuff);
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Wrote size");
+                    imageReady = false;
+                    imageSent = false;
                 }
+
+                String type = "NOTHING";
+                if(mBufferedReader.ready()) {
+                    type = mBufferedReader.readLine();
+                    Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "TYPE: " + type);
+                    if(type.equals("CLOSED")) { // Write "CLOSED" server-side when closing connection
+                        throw new IOException();
+                    }
+                } else {
+                    //Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "TYPE: " + "ERROR")
+;                }
+                switch (type) {
+                    case "SIZE":
+                        // Read the size that the server sends back (this is the confirmation to ensure
+                        // that server got the right size)
+                        String rSize = mBufferedReader.readLine();
+                        if(rSize.equals("CLOSED")) {
+                            throw new IOException();
+                        }
+                        int responseSize = Integer.parseInt(rSize);
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Response size: " + responseSize);
+
+                        // Only proceed if the original size sent and the response size received are
+                        // equal, otherwise break since connection is corrupted somehow (and try to re-connect)
+                        if (copyImage.length != responseSize) {
+                            throw new IOException();
+                        }
+
+                        // Write bytes for image to output stream
+                        mOutputStream.write(copyImage);
+                        imageSent = true;
+                        break;
+                    case "OK":
+                        // Only proceed if confirmation was "OK", otherwise break since connection was
+                        // corrupted somehow
+                        serverReady = true;
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Confirmation message: " + type);
+                        break;
+                    case "RESULT":
+                        // Read the danger level as an integer (depth information)
+                        String rLevel = mBufferedReader.readLine();
+                        if(rLevel.equals("CLOSED")) {
+                            throw new IOException();
+                        }
+                        int dangerLevel = Integer.parseInt(rLevel);
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Danger level: " + dangerLevel);
+
+                        String dangerSide = mBufferedReader.readLine();
+                        if(dangerSide.equals("CLOSED")) {
+                            throw new IOException();
+                        }
+
+                        // Read the detections and store them
+                        String result;
+                        ArrayList<Detection> detections = new ArrayList<>();
+                        while ((result = mBufferedReader.readLine()) != null) {
+                            if(result.equals("CLOSED")) throw new IOException();
+                            if (result.equals("END")) break;
+                            if (!result.isEmpty()) {
+                                detections.add(new Detection(result));
+                            }
+                        }
+
+                        /*Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, detections.toString());
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average size confirmation: " +
+                                sumMillisSizeConf / count + " ms");
+                        Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Average image confirmation: " +
+                                sumMillisImageConf / count + " ms");*/
+
+                        // Send message to ImageManager to update beep frequency based on danger level
+                        // and send detections
+                        switch (dangerLevel) {
+                            case 0:
+                                mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_CLEAR,
+                                        new Data(dangerSide, detections)).sendToTarget();
+                                break;
+                            case 1:
+                                mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_CAREFUL,
+                                        new Data(dangerSide, detections)).sendToTarget();
+                                break;
+                            case 2:
+                                mMainHandler.obtainMessage(Constants.BEEP_FREQUENCY_DANGEROUS,
+                                        new Data(dangerSide, detections)).sendToTarget();
+                                break;
+                            default:
+                                Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Something bad happened.");
+                                break;
+                        }
+                        break;
+                    default:
+                        //Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "PROBLEM!!!: " + type);
+                        break;
+                }
+            } catch (IOException e) {
+                Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket " +
+                        "connection");
+                // Try to re-establish socket connection
+                do {
+                    isConnected = false;
+                    //Log.e(Constants.CLIENT_SOCKET_THREAD_TAG, "Unable to open client side socket connection");
+                } while (!openSocketConnection());
+                imageSent = true;
+                isConnected = true;
             }
         }
     }
@@ -206,7 +230,7 @@ public class ClientSocketThread extends Thread {
 
             // Initialize output and input streams
             mOutputStream = mSocket.getOutputStream();
-            mInputStream = mSocket.getInputStream();
+            //mInputStream = mSocket.getInputStream();
 
             // Initialize reader for input stream
             mBufferedReader = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
@@ -214,6 +238,15 @@ public class ClientSocketThread extends Thread {
             return true;
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    public class Data {
+        public String mDangerSide;
+        public ArrayList<Detection> mDetections;
+        public Data(String side, ArrayList<Detection> detections) {
+            mDangerSide = side;
+            mDetections = detections;
         }
     }
 }
